@@ -20,6 +20,8 @@ app.use((req, res, next) => {
   next();
 });
 
+app.use(express.json());
+
 const MAX_PARTICIPANTS = 4;
 const rooms = new Map();
 
@@ -39,15 +41,28 @@ app.get('/create-room', (_, res) => {
   res.json({ roomId });
 });
 
+// ── NEW: Create room with a specific ID ───────────────────────────────────
+app.post('/create-room-with-id', (req, res) => {
+  const { roomId } = req.body;
+  if (!roomId) return res.status(400).json({ error: 'roomId required' });
+  if (!rooms.has(roomId)) {
+    rooms.set(roomId, new Map());
+  }
+  res.json({ roomId, created: true });
+});
+
 io.on('connection', (socket) => {
   console.log(`[+] Socket connected: ${socket.id}`);
 
   socket.on('join-room', ({ roomId, displayName }) => {
-    const room = rooms.get(roomId);
-    if (!room) {
-      socket.emit('error', { code: 'ROOM_NOT_FOUND', message: 'Room does not exist.' });
-      return;
+    // ── AUTO-CREATE room if it doesn't exist ──────────────────────────────
+    if (!rooms.has(roomId)) {
+      rooms.set(roomId, new Map());
+      console.log(`[Room ${roomId}] Auto-created on join.`);
     }
+
+    const room = rooms.get(roomId);
+
     if (room.size >= MAX_PARTICIPANTS) {
       socket.emit('error', { code: 'ROOM_FULL', message: `This room is full (max ${MAX_PARTICIPANTS} participants).` });
       return;
