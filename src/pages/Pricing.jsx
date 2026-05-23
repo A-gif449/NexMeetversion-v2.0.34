@@ -21,7 +21,7 @@ const PLANS = [
     cta:      'Get started free',
     sub:      'Perfect for personal use',
     features: [
-      { label: 'Up to 2 participants',         ok: true },
+      { label: 'Up to 5 participants',         ok: true },
       { label: '40-min meeting limit',         ok: true },
       { label: 'HD video (720p)',              ok: true },
       { label: 'Screen sharing',              ok: true },
