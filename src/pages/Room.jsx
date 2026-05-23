@@ -1,12 +1,9 @@
 // src/pages/Room.jsx
-// ─────────────────────────────────────────────
-// This is the in-meeting room page.
-// Wire your existing webrtc.js / helpers.js logic here.
-// The layout & controls are pre-built below.
-// ─────────────────────────────────────────────
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../firebase/AuthContext'
+import { io } from 'socket.io-client'
+import { PeerConnectionManager } from '../utils/webrtc'
 
 export default function Room() {
   const { roomId }  = useParams()
@@ -20,47 +17,118 @@ export default function Room() {
   const [chatMsg,  setChatMsg]  = useState('')
   const [messages, setMessages] = useState([])
   const [elapsed,  setElapsed]  = useState(0)
-  const videoRef   = useRef(null)
-  const streamRef  = useRef(null)
+  const [peers,    setPeers]    = useState({}) // socketId -> { stream, displayName }
 
-  // Start local camera preview
+  const videoRef  = useRef(null)
+  const streamRef = useRef(null)
+  const socketRef = useRef(null)
+  const pcmRef    = useRef(null)
+
+  // ── Socket + WebRTC setup ─────────────────────────────────────────────────
   useEffect(() => {
+    const socket = io(import.meta.env.VITE_BACKEND_URL)
+    socketRef.current = socket
+
     navigator.mediaDevices.getUserMedia({ video: true, audio: true })
       .then(stream => {
         streamRef.current = stream
         if (videoRef.current) videoRef.current.srcObject = stream
+
+        const pcm = new PeerConnectionManager({
+          socket,
+          localStream: stream,
+          onTrack: (socketId, remoteStream) => {
+            setPeers(prev => ({ ...prev, [socketId]: { ...prev[socketId], stream: remoteStream } }))
+          },
+          onConnectionStateChange: () => {}
+        })
+        pcmRef.current = pcm
+
+        // Join the room
+        socket.emit('join-room', { roomId, displayName: user?.displayName || 'Guest' })
+
+        // Room joined — call all existing peers
+        socket.on('room-joined', ({ existingPeers }) => {
+          existingPeers.forEach(({ socketId, displayName }) => {
+            setPeers(prev => ({ ...prev, [socketId]: { displayName } }))
+            pcm.callPeer(socketId)
+          })
+        })
+
+        // New peer joined
+        socket.on('peer-joined', ({ socketId, displayName }) => {
+          setPeers(prev => ({ ...prev, [socketId]: { displayName } }))
+        })
+
+        // WebRTC signaling
+        socket.on('offer', ({ from, offer, displayName }) => {
+          setPeers(prev => ({ ...prev, [from]: { ...prev[from], displayName } }))
+          pcm.handleOffer(from, offer)
+        })
+
+        socket.on('answer', ({ from, answer }) => pcm.handleAnswer(from, answer))
+
+        socket.on('ice-candidate', ({ from, candidate }) => pcm.handleIceCandidate(from, candidate))
+
+        // Peer left
+        socket.on('peer-left', ({ socketId }) => {
+          pcm.removePeer(socketId)
+          setPeers(prev => {
+            const p = { ...prev }
+            delete p[socketId]
+            return p
+          })
+        })
+
+        // Chat messages from others
+        socket.on('chat-message', ({ displayName, message, timestamp }) => {
+          setMessages(m => [...m, { from: displayName, text: message, ts: timestamp }])
+        })
       })
       .catch(() => {})
 
     const timer = setInterval(() => setElapsed(e => e + 1), 1000)
+
     return () => {
       clearInterval(timer)
+      socket.disconnect()
+      pcmRef.current?.closeAll()
       streamRef.current?.getTracks().forEach(t => t.stop())
     }
-  }, [])
+  }, [roomId])
 
+  // ── Controls ──────────────────────────────────────────────────────────────
   const toggleMic = () => {
     streamRef.current?.getAudioTracks().forEach(t => { t.enabled = !micOn })
+    socketRef.current?.emit('media-state', { video: camOn, audio: !micOn })
     setMicOn(m => !m)
   }
 
   const toggleCam = () => {
     streamRef.current?.getVideoTracks().forEach(t => { t.enabled = !camOn })
+    socketRef.current?.emit('media-state', { video: !camOn, audio: micOn })
     setCamOn(c => !c)
   }
 
   const handleLeave = () => {
     streamRef.current?.getTracks().forEach(t => t.stop())
+    socketRef.current?.disconnect()
+    pcmRef.current?.closeAll()
     navigate('/rooms')
   }
 
   const sendChat = () => {
     if (!chatMsg.trim()) return
+    // Add locally
     setMessages(m => [...m, { from: user?.displayName || 'You', text: chatMsg.trim(), ts: Date.now() }])
+    // Send to others via socket
+    socketRef.current?.emit('chat-message', { message: chatMsg.trim() })
     setChatMsg('')
   }
 
   const fmt = (s) => `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`
+
+  const peerList = Object.entries(peers)
 
   return (
     <div style={{ height: '100vh', background: 'var(--bg-void)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -79,6 +147,9 @@ export default function Room() {
           <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '0.9rem' }}>NexMeet</span>
           <span style={{ fontSize: '0.75rem', color: 'var(--text-4)', letterSpacing: '0.05em' }}>|</span>
           <span style={{ fontSize: '0.8rem', color: 'var(--text-3)', fontFamily: 'monospace' }}>{roomId}</span>
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-4)' }}>
+            {peerList.length + 1} participant{peerList.length + 1 !== 1 ? 's' : ''}
+          </span>
         </div>
 
         <div style={{
@@ -106,13 +177,21 @@ export default function Room() {
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', background: '#080810' }}>
           <div style={{
             width: '100%', maxWidth: 900,
-            display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '0.75rem',
+            display: 'grid',
+            gridTemplateColumns: peerList.length === 0
+              ? '1fr'
+              : peerList.length === 1
+                ? 'repeat(2, 1fr)'
+                : 'repeat(auto-fit, minmax(280px, 1fr))',
+            gap: '0.75rem',
           }}>
             {/* Local video tile */}
             <VideoTile name={user?.displayName || 'You'} isLocal videoRef={videoRef} camOn={camOn} micOn={micOn} />
 
-            {/* Placeholder remote tile */}
-            <VideoTile name="Waiting for others…" isLocal={false} camOn={false} micOn={false} />
+            {/* Remote peers */}
+            {peerList.map(([socketId, { stream, displayName }]) => (
+              <RemoteVideoTile key={socketId} name={displayName || 'Guest'} stream={stream} />
+            ))}
           </div>
         </div>
 
@@ -154,12 +233,12 @@ export default function Room() {
         gap: '0.75rem', background: 'rgba(5,5,8,0.95)',
         borderTop: '0.5px solid var(--border)', flexShrink: 0, padding: '0 1rem',
       }}>
-        <ControlBtn active={micOn}    onClick={toggleMic}             label={micOn    ? '🎙️' : '🔇'} title={micOn    ? 'Mute'        : 'Unmute'} />
-        <ControlBtn active={camOn}    onClick={toggleCam}             label={camOn    ? '📷' : '🚫'} title={camOn    ? 'Stop Camera' : 'Start Camera'} />
-        <ControlBtn active={screenOn} onClick={() => setScreenOn(s=>!s)} label="🖥️"    title="Share Screen" />
-        <ControlBtn active={chatOpen} onClick={() => setChatOpen(c=>!c)} label="💬"    title="Chat" badge={messages.length} />
-        <ControlBtn active={false}    onClick={() => {}}              label="😊"       title="Reactions" />
-        <ControlBtn active={false}    onClick={() => {}}              label="⋯"        title="More" />
+        <ControlBtn active={micOn}    onClick={toggleMic}                label={micOn    ? '🎙️' : '🔇'} title={micOn    ? 'Mute'        : 'Unmute'} />
+        <ControlBtn active={camOn}    onClick={toggleCam}                label={camOn    ? '📷' : '🚫'} title={camOn    ? 'Stop Camera' : 'Start Camera'} />
+        <ControlBtn active={screenOn} onClick={() => setScreenOn(s=>!s)} label="🖥️"                    title="Share Screen" />
+        <ControlBtn active={chatOpen} onClick={() => setChatOpen(c=>!c)} label="💬"                    title="Chat" badge={messages.length} />
+        <ControlBtn active={false}    onClick={() => {}}                 label="😊"                    title="Reactions" />
+        <ControlBtn active={false}    onClick={() => {}}                 label="⋯"                     title="More" />
 
         <div style={{ width: 1, height: 30, background: 'var(--border)', margin: '0 0.5rem' }} />
 
@@ -171,6 +250,19 @@ export default function Room() {
   )
 }
 
+// ── Sub-components ────────────────────────────────────────────────────────────
+
+function RemoteVideoTile({ name, stream }) {
+  const ref = useRef(null)
+  useEffect(() => {
+    if (ref.current && stream) ref.current.srcObject = stream
+  }, [stream])
+
+  return (
+    <VideoTile name={name} isLocal={false} videoRef={ref} camOn={!!stream} micOn={true} />
+  )
+}
+
 function VideoTile({ name, isLocal, videoRef, camOn, micOn }) {
   return (
     <div style={{
@@ -178,9 +270,9 @@ function VideoTile({ name, isLocal, videoRef, camOn, micOn }) {
       background: '#0d0d18', overflow: 'hidden', position: 'relative',
       border: '0.5px solid var(--border)',
     }}>
-      {isLocal && camOn ? (
-        <video ref={videoRef} autoPlay muted playsInline
-          style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' }} />
+      {camOn ? (
+        <video ref={videoRef} autoPlay muted={isLocal} playsInline
+          style={{ width: '100%', height: '100%', objectFit: 'cover', transform: isLocal ? 'scaleX(-1)' : 'none' }} />
       ) : (
         <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
           <div style={{
