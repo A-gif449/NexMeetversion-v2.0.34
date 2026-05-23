@@ -88,7 +88,7 @@ function renderLobby() {
     const name = $('name-new').value.trim();
     if (!name) { showNotification('Please enter your name', 'warning'); $('name-new').focus(); return; }
     state.displayName = name;
-    const res = await fetch('/create-room').catch(() => null);
+    const res = await fetch('https://nexmeet-2nts.onrender.com/create-room').catch(() => null);
     if (!res?.ok) { showNotification('Server offline. Start the signaling server first.', 'error', 6000); return; }
     const { roomId } = await res.json();
     state.roomId = roomId;
