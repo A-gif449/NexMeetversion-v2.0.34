@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../firebase/AuthContext'
 import Navbar from '../components/Navbar'
+import Footer from '../components/Footer'
 
 // ─────────────────────────────────────────────
 // Replace RAZORPAY_KEY_ID with your actual key.
@@ -330,6 +331,7 @@ export default function Pricing() {
           </div>
         </div>
       </div>
+      <Footer/>
     </div>
   )
 }

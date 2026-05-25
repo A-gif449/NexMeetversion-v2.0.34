@@ -5,6 +5,7 @@ import {
   signInEmail, signUpEmail, signInGoogle, resetPassword
 } from '../firebase/config'
 import { useAuth } from '../firebase/AuthContext'
+import Footer from '../components/Footer'
 
 export default function Login() {
   const [searchParams] = useSearchParams()

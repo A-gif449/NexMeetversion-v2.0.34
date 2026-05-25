@@ -1,0 +1,200 @@
+/* ─────────────────────────────────────────────────────────────
+   AuroraBackground.css
+   Fully isolated — every class is aurora-* prefixed.
+   Add this file alongside AuroraBackground.jsx in /src/components/
+   ───────────────────────────────────────────────────────────── */
+
+/* ── Root wrapper ── */
+.aurora-root {
+  position: relative;
+  min-height: 100svh;
+  width: 100%;
+  overflow-x: hidden;
+  isolation: isolate;          /* new stacking context — won't bleed into children */
+}
+
+/* ── Layer 1: void base ── */
+.aurora-void {
+  position: fixed;
+  inset: 0;
+  z-index: -10;
+  background: #05050f;          /* near-black with cool blue tint */
+}
+
+/* ── Layer 2: animated gradient mesh (the aurora itself) ── */
+.aurora-mesh {
+  position: fixed;
+  inset: -40% -20%;             /* oversized so the gradient movement isn't clipped */
+  z-index: -9;
+  background:
+    radial-gradient(ellipse 80% 60% at 20% 10%,  rgba(109, 40, 217, 0.22) 0%, transparent 60%),
+    radial-gradient(ellipse 70% 50% at 80% 20%,  rgba(59,  130, 246, 0.16) 0%, transparent 55%),
+    radial-gradient(ellipse 90% 70% at 50% 80%,  rgba(124, 58, 237, 0.18) 0%, transparent 65%),
+    radial-gradient(ellipse 60% 40% at 10% 70%,  rgba(20,  184, 166, 0.10) 0%, transparent 50%),
+    radial-gradient(ellipse 50% 40% at 90% 85%,  rgba(79,  70,  229, 0.14) 0%, transparent 50%);
+  background-size: 200% 200%;
+  animation: auroraMesh 18s ease-in-out infinite alternate;
+  will-change: background-position;
+}
+
+@keyframes auroraMesh {
+  0%   { background-position: 0%   0%,   100% 0%,   50% 100%, 0%   50%, 100% 100%; }
+  25%  { background-position: 30%  20%,  70%  30%,  20% 80%,  40%  60%, 80%  70%;  }
+  50%  { background-position: 60%  10%,  40%  60%,  80% 30%,  20%  80%, 60%  20%;  }
+  75%  { background-position: 20%  70%,  80%  10%,  40% 60%,  70%  20%, 30%  90%;  }
+  100% { background-position: 100% 100%, 0%   100%, 100% 0%,  100% 0%,  0%   50%;  }
+}
+
+/* ── Layer 3: drifting orbs ── */
+.aurora-orb {
+  position: fixed;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: -8;
+  will-change: transform;
+}
+
+.aurora-orb--1 {
+  width: 600px; height: 600px;
+  top: -15%; left: -10%;
+  background: radial-gradient(circle, rgba(109, 40, 217, 0.28) 0%, transparent 70%);
+  filter: blur(72px);
+  animation: orbDrift1 22s ease-in-out infinite;
+}
+
+.aurora-orb--2 {
+  width: 500px; height: 500px;
+  top: 30%; right: -8%;
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.22) 0%, transparent 70%);
+  filter: blur(80px);
+  animation: orbDrift2 26s ease-in-out infinite;
+}
+
+.aurora-orb--3 {
+  width: 700px; height: 700px;
+  bottom: -20%; left: 20%;
+  background: radial-gradient(circle, rgba(124, 58, 237, 0.20) 0%, transparent 70%);
+  filter: blur(90px);
+  animation: orbDrift3 30s ease-in-out infinite;
+}
+
+.aurora-orb--4 {
+  width: 380px; height: 380px;
+  top: 55%; left: 55%;
+  background: radial-gradient(circle, rgba(20, 184, 166, 0.12) 0%, transparent 70%);
+  filter: blur(64px);
+  animation: orbDrift4 20s ease-in-out infinite;
+}
+
+@keyframes orbDrift1 {
+  0%, 100% { transform: translate(0px,   0px)   scale(1);    }
+  33%       { transform: translate(60px,  -40px) scale(1.08); }
+  66%       { transform: translate(-30px,  50px) scale(0.95); }
+}
+@keyframes orbDrift2 {
+  0%, 100% { transform: translate(0px,  0px)   scale(1);    }
+  40%       { transform: translate(-50px, 60px) scale(1.05); }
+  70%       { transform: translate(40px, -30px) scale(0.97); }
+}
+@keyframes orbDrift3 {
+  0%, 100% { transform: translate(0px,   0px)   scale(1);    }
+  30%       { transform: translate(-40px, -50px) scale(1.06); }
+  65%       { transform: translate(50px,   30px) scale(0.94); }
+}
+@keyframes orbDrift4 {
+  0%, 100% { transform: translate(0px,  0px)   scale(1);    }
+  50%       { transform: translate(-60px, -40px) scale(1.10); }
+}
+
+/* ── Layer 4: dot grid (takeUforward style) ── */
+.aurora-dots {
+  position: fixed;
+  inset: 0;
+  z-index: -7;
+  pointer-events: none;
+  background-image: radial-gradient(
+    circle,
+    rgba(168, 139, 250, 0.18) 1px,
+    transparent 1px
+  );
+  background-size: 28px 28px;
+  /* subtle fade from edges so it doesn't look tiled */
+ -webkit-mask-image: radial-gradient(
+  ellipse 85% 85% at 50% 50%,
+  black 40%,
+  transparent 100%
+);
+mask-image: radial-gradient(
+  ellipse 85% 85% at 50% 50%,
+  black 40%,
+  transparent 100%
+);
+}
+
+/* ── Layer 5: scanline shimmer ── */
+.aurora-scanlines {
+  position: fixed;
+  inset: 0;
+  z-index: -6;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.04) 2px,
+    rgba(0, 0, 0, 0.04) 4px
+  );
+  animation: scanlineMove 12s linear infinite;
+}
+
+@keyframes scanlineMove {
+  0%   { background-position: 0 0;    }
+  100% { background-position: 0 80px; }
+}
+
+/* ── Layer 6: star canvas ── */
+.aurora-stars {
+  position: fixed;
+  inset: 0;
+  z-index: -5;
+  pointer-events: none;
+  opacity: 0.9;
+}
+
+/* ── Layer 7: edge vignette ── */
+.aurora-vignette {
+  position: fixed;
+  inset: 0;
+  z-index: -4;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse 100% 100% at 50% 50%,
+    transparent 40%,
+    rgba(4, 4, 14, 0.55) 100%
+  );
+}
+
+/* ── Layer 8: page content ── */
+.aurora-content {
+  position: relative;
+  z-index: 1;
+  min-height: 100svh;
+}
+
+/* ── Responsive: reduce blur on mobile for perf ── */
+@media (max-width: 768px) {
+  .aurora-orb--1 { filter: blur(50px); width: 400px; height: 400px; }
+  .aurora-orb--2 { filter: blur(55px); width: 350px; height: 350px; }
+  .aurora-orb--3 { filter: blur(60px); width: 450px; height: 450px; }
+  .aurora-orb--4 { filter: blur(45px); width: 260px; height: 260px; }
+  .aurora-scanlines { display: none; } /* tiny perf save on mobile */
+}
+
+/* ── Respect reduced motion ── */
+@media (prefers-reduced-motion: reduce) {
+  .aurora-mesh,
+  .aurora-orb,
+  .aurora-scanlines {
+    animation: none !important;
+  }
+}

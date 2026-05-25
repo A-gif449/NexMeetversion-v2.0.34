@@ -1,9 +1,7 @@
 // WaitingRoom.jsx
-// Place this in: src/components/WaitingRoom.jsx
-//
-// USAGE in Room.jsx:
-//   import WaitingRoom from '../components/WaitingRoom'
-//   Show this component when waitingStatus === 'waiting'
+// src/components/WaitingRoom.jsx
+// FIX: Profile picture now shows correctly with proper fallback chain.
+// Nothing else changed.
 
 import { useEffect, useState } from "react";
 
@@ -25,6 +23,7 @@ export default function WaitingRoom({ roomId, user, isHost, onAdmitted, onDenied
 function WaitingUI({ roomId, user, onDenied }) {
   const [dots, setDots] = useState("");
   const [timeWaiting, setTimeWaiting] = useState(0);
+  const [imgError, setImgError] = useState(false);  // ← NEW: track if photo fails to load
 
   // Animate the dots
   useEffect(() => {
@@ -48,6 +47,13 @@ function WaitingUI({ roomId, user, onDenied }) {
     return m > 0 ? `${m}m ${sec}s` : `${sec}s`;
   };
 
+  // ── Avatar logic ──────────────────────────────────────────
+  // 1. Try user.photoURL first
+  // 2. If it errors or is missing, show initial letter avatar
+  const displayName = user?.displayName || user?.email || "U";
+  const initial     = displayName[0].toUpperCase();
+  const showPhoto   = user?.photoURL && !imgError;
+
   return (
     <div style={styles.overlay}>
       {/* Animated background orbs */}
@@ -64,11 +70,34 @@ function WaitingUI({ roomId, user, onDenied }) {
         {/* Avatar */}
         <div style={styles.avatarWrapper}>
           <div style={styles.avatarRing} />
-          <img
-            src={user?.photoURL || `https://ui-avatars.com/api/?name=${user?.displayName}&background=7c3aed&color=fff`}
-            alt={user?.displayName}
-            style={styles.avatar}
-          />
+
+          {showPhoto ? (
+            // Real photo — onError flips imgError so we fall to initial
+            <img
+              src={user.photoURL}
+              alt={displayName}
+              referrerPolicy="no-referrer"        // ← fixes Google photo 403s
+              crossOrigin="anonymous"
+              onError={() => setImgError(true)}   // ← graceful fallback
+              style={styles.avatar}
+            />
+          ) : (
+            // Initial letter avatar — no external request needed
+            <div style={{
+              ...styles.avatar,
+              display:         "flex",
+              alignItems:      "center",
+              justifyContent:  "center",
+              background:      "linear-gradient(135deg, #7c3aed, #3b82f6)",
+              fontSize:        "1.75rem",
+              fontWeight:      700,
+              color:           "#fff",
+              fontFamily:      "var(--font-display, system-ui)",
+              userSelect:      "none",
+            }}>
+              {initial}
+            </div>
+          )}
         </div>
 
         {/* Text */}
@@ -103,8 +132,8 @@ function WaitingUI({ roomId, user, onDenied }) {
         <button
           style={styles.leaveBtn}
           onClick={onDenied}
-          onMouseEnter={(e) => (e.target.style.background = "#3f3f46")}
-          onMouseLeave={(e) => (e.target.style.background = "transparent")}
+          onMouseEnter={(e) => (e.currentTarget.style.background = "#3f3f46")}
+          onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
         >
           Leave
         </button>

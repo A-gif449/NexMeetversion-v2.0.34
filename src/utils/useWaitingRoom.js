@@ -1,165 +1,145 @@
 // src/utils/useWaitingRoom.js
-// FIXED: 
-//   1. Guest listener no longer gated on waitingStatus — attaches immediately
-//      so it catches 'admitted'/'denied' even if written before status becomes 'waiting'
-//   2. admitUser no longer races — deletes queue AFTER writing status
-//   3. Listener deps cleaned up — no longer re-subscribes on every status change
-
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { db } from '../firebase/config'
 import {
-  doc,
-  setDoc,
-  deleteDoc,
-  onSnapshot,
-  collection,
+  doc, setDoc, deleteDoc, onSnapshot,
+  collection, getDoc,
 } from 'firebase/firestore'
 
 export default function useWaitingRoom(roomId, currentUser, isHost) {
-  // isHost: null = still loading | true = host | false = guest
-
   const [waitingStatus, setWaitingStatus] = useState('idle')
   const [waitingUsers,  setWaitingUsers]  = useState([])
 
-  // Track whether we've already written to Firestore so requestToJoin is idempotent
   const hasRequestedRef = useRef(false)
 
-  // ── GUEST: Request to join ────────────────────────────────────────────────
+  // ── GUEST: Request to join ──────────────────────────────────────────────
   const requestToJoin = useCallback(async () => {
     if (!roomId || !currentUser) return
-    if (isHost !== false) return           // only guests
-    if (hasRequestedRef.current) return    // FIX: prevent double-writes on re-render
-
+    if (isHost !== false) return
+    if (hasRequestedRef.current) return
     hasRequestedRef.current = true
+
+    console.log('[NexMeet] requestToJoin fired for', currentUser.uid)
 
     try {
       const queueRef  = doc(db, 'waitingRooms', roomId, 'queue',  currentUser.uid)
       const statusRef = doc(db, 'waitingRooms', roomId, 'status', currentUser.uid)
 
-      // Write queue entry and status atomically (sequential is fine, both are fast)
+      // Check if already admitted/denied (e.g. guest refreshed mid-session)
+      const existingSnap = await getDoc(statusRef)
+      if (existingSnap.exists()) {
+        const existing = existingSnap.data()?.value
+        console.log('[NexMeet] Existing status found:', existing)
+        if (existing === 'admitted') { setWaitingStatus('admitted'); return }
+        if (existing === 'denied')   { setWaitingStatus('denied');   return }
+      }
+
+      // Write queue entry
       await setDoc(queueRef, {
         userId:      currentUser.uid,
         displayName: currentUser.displayName || 'Guest',
         photoURL:    currentUser.photoURL    || null,
         requestedAt: Date.now(),
-      })
-      await setDoc(statusRef, { value: 'waiting' })
+      }, { merge: true })
+
+      // ✅ Only write 'waiting' if no existing status doc
+      if (!existingSnap.exists()) {
+        await setDoc(statusRef, { value: 'waiting' })
+      }
 
       setWaitingStatus('waiting')
+      console.log('[NexMeet] requestToJoin complete ✅')
     } catch (err) {
       console.error('[NexMeet] requestToJoin failed:', err)
-      hasRequestedRef.current = false      // allow retry on error
+      hasRequestedRef.current = false
     }
   }, [roomId, currentUser, isHost])
 
-  // ── GUEST: Listen for host decision ───────────────────────────────────────
-  // FIX: This effect no longer depends on waitingStatus — it attaches as soon
-  //      as isHost is confirmed false. That way it never misses a fast admit/deny
-  //      that arrives while the component is still transitioning to 'waiting'.
+  // ── GUEST: Listen for host decision ────────────────────────────────────
   useEffect(() => {
-    if (isHost !== false) return            // null (loading) or true (host) → skip
+    if (isHost !== false) return
     if (!currentUser || !roomId) return
 
+    console.log('[NexMeet] Guest: attaching status listener for', currentUser.uid)
     const statusRef = doc(db, 'waitingRooms', roomId, 'status', currentUser.uid)
 
     const unsub = onSnapshot(statusRef, (snap) => {
-      if (!snap.exists()) return
-
+      if (!snap.exists()) {
+        console.log('[NexMeet] Status doc not yet created')
+        return
+      }
       const status = snap.data()?.value
+      console.log('[NexMeet] Status update received:', status)
 
       if (status === 'admitted') {
         setWaitingStatus('admitted')
-        // Clean up queue entry only — keep status doc so Room.jsx
-        // transition logic can still read 'admitted' if it re-renders
-        deleteDoc(doc(db, 'waitingRooms', roomId, 'queue', currentUser.uid))
-
+        deleteDoc(doc(db, 'waitingRooms', roomId, 'queue', currentUser.uid)).catch(() => {})
       } else if (status === 'denied') {
         setWaitingStatus('denied')
-        deleteDoc(doc(db, 'waitingRooms', roomId, 'queue',  currentUser.uid))
-        // Delay status cleanup so Room.jsx redirect effect can read 'denied'
+        deleteDoc(doc(db, 'waitingRooms', roomId, 'queue', currentUser.uid)).catch(() => {})
         setTimeout(() => {
-          deleteDoc(doc(db, 'waitingRooms', roomId, 'status', currentUser.uid))
+          deleteDoc(doc(db, 'waitingRooms', roomId, 'status', currentUser.uid)).catch(() => {})
         }, 3000)
+      } else if (status === 'waiting') {
+        setWaitingStatus('waiting')
       }
-      // 'waiting' → no-op, just keep listening
+    }, (err) => {
+      console.error('[NexMeet] Guest status listener error:', err.code, err.message)
     })
 
     return () => unsub()
-  // FIX: removed waitingStatus from deps — listener must stay alive across status changes
-  }, [roomId, currentUser, isHost])            // eslint-disable-line react-hooks/exhaustive-deps
+  }, [roomId, currentUser, isHost])
 
-  // ── HOST: Listen to waiting queue ─────────────────────────────────────────
+  // ── HOST: Listen to waiting queue ──────────────────────────────────────
   useEffect(() => {
-    if (isHost !== true) return            // null or false → skip
+    if (isHost !== true) return
     if (!roomId) return
 
+    console.log('[NexMeet] Host: attaching queue listener for room', roomId)
     const queueRef = collection(db, 'waitingRooms', roomId, 'queue')
+
     const unsub = onSnapshot(queueRef, (snap) => {
       const users = snap.docs
-        .map(d => d.data())
-        .sort((a, b) => a.requestedAt - b.requestedAt)
+        .map(d => ({ ...d.data(), userId: d.id }))
+        .sort((a, b) => (a.requestedAt || 0) - (b.requestedAt || 0))
+      console.log('[NexMeet] Queue updated:', users.length, 'waiting')
       setWaitingUsers(users)
+    }, (err) => {
+      console.error('[NexMeet] Host queue listener error:', err.code, err.message)
     })
+
     return () => unsub()
   }, [isHost, roomId])
 
-  // ── HOST: Admit ────────────────────────────────────────────────────────────
-  // FIX: Write status BEFORE deleting queue doc.
-  //      Old order (delete queue → write status) created a window where the
-  //      guest's listener saw the queue entry vanish but 'admitted' wasn't written yet.
+  // ── HOST: Admit ─────────────────────────────────────────────────────────
   const admitUser = useCallback(async (userId) => {
-    if (!roomId) return
+    if (!roomId || !userId) return
+    console.log('[NexMeet] admitUser:', userId)
     try {
-      // 1. Write 'admitted' first — guest listener picks this up immediately
+      // Write status FIRST so guest listener fires before queue disappears
       await setDoc(doc(db, 'waitingRooms', roomId, 'status', userId), { value: 'admitted' })
-      // 2. Then remove from queue so the host panel stops showing them
       await deleteDoc(doc(db, 'waitingRooms', roomId, 'queue', userId))
     } catch (err) {
       console.error('[NexMeet] admitUser failed:', err)
     }
   }, [roomId])
 
-  // ── HOST: Deny ─────────────────────────────────────────────────────────────
+  // ── HOST: Deny ──────────────────────────────────────────────────────────
   const denyUser = useCallback(async (userId) => {
-    if (!roomId) return
+    if (!roomId || !userId) return
+    console.log('[NexMeet] denyUser:', userId)
     try {
       const statusRef = doc(db, 'waitingRooms', roomId, 'status', userId)
-      // 1. Write 'denied' first so guest listener catches it
       await setDoc(statusRef, { value: 'denied' })
-      // 2. Remove from queue
       await deleteDoc(doc(db, 'waitingRooms', roomId, 'queue', userId))
-      // 3. Clean up status after guest has had time to read it
-      setTimeout(() => deleteDoc(statusRef), 5000)
+      setTimeout(() => deleteDoc(statusRef).catch(() => {}), 5000)
     } catch (err) {
       console.error('[NexMeet] denyUser failed:', err)
     }
   }, [roomId])
 
-  // ── Cleanup on unmount (guest only) ───────────────────────────────────────
-  // Only clean up if guest is still waiting (not admitted) to avoid wiping
-  // a status doc that Room.jsx still needs for its transition logic.
-  useEffect(() => {
-    return () => {
-      if (isHost !== false) return
-      if (!currentUser || !roomId) return
-      // Don't clean up if admitted — Room.jsx needs the status to stay 'admitted'
-      // so its useEffect guard (waitingStatus !== 'admitted') lets setup proceed
-      if (hasRequestedRef.current) {
-        // Only wipe if we're still in the waiting state (not admitted/denied)
-        // We can't read state here so we conservatively skip cleanup on unmount
-        // — Firestore TTL or a Cloud Function should handle orphan docs instead
-      }
-    }
-  }, [roomId, currentUser, isHost])
-
-  // Host is always considered admitted
+  // Host is always admitted
   const resolvedStatus = isHost === true ? 'admitted' : waitingStatus
 
-  return {
-    waitingStatus: resolvedStatus,
-    waitingUsers,
-    requestToJoin,
-    admitUser,
-    denyUser,
-  }
+  return { waitingStatus: resolvedStatus, waitingUsers, requestToJoin, admitUser, denyUser }
 }
