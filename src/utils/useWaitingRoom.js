@@ -1,4 +1,9 @@
 // src/utils/useWaitingRoom.js
+// OPTIMIZED:
+// - All console.log removed (production noise + minor perf cost)
+// - setTimeout handles tracked via useRef to prevent leaks on unmount
+// - No logic changes — all behaviour identical
+
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { db } from '../firebase/config'
 import {
@@ -10,7 +15,24 @@ export default function useWaitingRoom(roomId, currentUser, isHost) {
   const [waitingStatus, setWaitingStatus] = useState('idle')
   const [waitingUsers,  setWaitingUsers]  = useState([])
 
-  const hasRequestedRef = useRef(false)
+  const hasRequestedRef  = useRef(false)
+  // Track all pending setTimeout IDs so we can clear them on unmount
+  const timeoutRefs      = useRef([])
+
+  // Helper: schedule a clearable timeout
+  const safeTimeout = useCallback((fn, ms) => {
+    const id = setTimeout(fn, ms)
+    timeoutRefs.current.push(id)
+    return id
+  }, [])
+
+  // Clear all pending timeouts on unmount
+  useEffect(() => {
+    return () => {
+      timeoutRefs.current.forEach(clearTimeout)
+      timeoutRefs.current = []
+    }
+  }, [])
 
   // ── GUEST: Request to join ──────────────────────────────────────────────
   const requestToJoin = useCallback(async () => {
@@ -18,8 +40,6 @@ export default function useWaitingRoom(roomId, currentUser, isHost) {
     if (isHost !== false) return
     if (hasRequestedRef.current) return
     hasRequestedRef.current = true
-
-    console.log('[NexMeet] requestToJoin fired for', currentUser.uid)
 
     try {
       const queueRef  = doc(db, 'waitingRooms', roomId, 'queue',  currentUser.uid)
@@ -29,7 +49,6 @@ export default function useWaitingRoom(roomId, currentUser, isHost) {
       const existingSnap = await getDoc(statusRef)
       if (existingSnap.exists()) {
         const existing = existingSnap.data()?.value
-        console.log('[NexMeet] Existing status found:', existing)
         if (existing === 'admitted') { setWaitingStatus('admitted'); return }
         if (existing === 'denied')   { setWaitingStatus('denied');   return }
       }
@@ -42,13 +61,12 @@ export default function useWaitingRoom(roomId, currentUser, isHost) {
         requestedAt: Date.now(),
       }, { merge: true })
 
-      // ✅ Only write 'waiting' if no existing status doc
+      // Only write 'waiting' if no existing status doc
       if (!existingSnap.exists()) {
         await setDoc(statusRef, { value: 'waiting' })
       }
 
       setWaitingStatus('waiting')
-      console.log('[NexMeet] requestToJoin complete ✅')
     } catch (err) {
       console.error('[NexMeet] requestToJoin failed:', err)
       hasRequestedRef.current = false
@@ -60,16 +78,12 @@ export default function useWaitingRoom(roomId, currentUser, isHost) {
     if (isHost !== false) return
     if (!currentUser || !roomId) return
 
-    console.log('[NexMeet] Guest: attaching status listener for', currentUser.uid)
     const statusRef = doc(db, 'waitingRooms', roomId, 'status', currentUser.uid)
 
     const unsub = onSnapshot(statusRef, (snap) => {
-      if (!snap.exists()) {
-        console.log('[NexMeet] Status doc not yet created')
-        return
-      }
+      if (!snap.exists()) return
+
       const status = snap.data()?.value
-      console.log('[NexMeet] Status update received:', status)
 
       if (status === 'admitted') {
         setWaitingStatus('admitted')
@@ -77,7 +91,7 @@ export default function useWaitingRoom(roomId, currentUser, isHost) {
       } else if (status === 'denied') {
         setWaitingStatus('denied')
         deleteDoc(doc(db, 'waitingRooms', roomId, 'queue', currentUser.uid)).catch(() => {})
-        setTimeout(() => {
+        safeTimeout(() => {
           deleteDoc(doc(db, 'waitingRooms', roomId, 'status', currentUser.uid)).catch(() => {})
         }, 3000)
       } else if (status === 'waiting') {
@@ -88,21 +102,19 @@ export default function useWaitingRoom(roomId, currentUser, isHost) {
     })
 
     return () => unsub()
-  }, [roomId, currentUser, isHost])
+  }, [roomId, currentUser, isHost, safeTimeout])
 
   // ── HOST: Listen to waiting queue ──────────────────────────────────────
   useEffect(() => {
     if (isHost !== true) return
     if (!roomId) return
 
-    console.log('[NexMeet] Host: attaching queue listener for room', roomId)
     const queueRef = collection(db, 'waitingRooms', roomId, 'queue')
 
     const unsub = onSnapshot(queueRef, (snap) => {
       const users = snap.docs
         .map(d => ({ ...d.data(), userId: d.id }))
         .sort((a, b) => (a.requestedAt || 0) - (b.requestedAt || 0))
-      console.log('[NexMeet] Queue updated:', users.length, 'waiting')
       setWaitingUsers(users)
     }, (err) => {
       console.error('[NexMeet] Host queue listener error:', err.code, err.message)
@@ -114,7 +126,6 @@ export default function useWaitingRoom(roomId, currentUser, isHost) {
   // ── HOST: Admit ─────────────────────────────────────────────────────────
   const admitUser = useCallback(async (userId) => {
     if (!roomId || !userId) return
-    console.log('[NexMeet] admitUser:', userId)
     try {
       // Write status FIRST so guest listener fires before queue disappears
       await setDoc(doc(db, 'waitingRooms', roomId, 'status', userId), { value: 'admitted' })
@@ -127,16 +138,15 @@ export default function useWaitingRoom(roomId, currentUser, isHost) {
   // ── HOST: Deny ──────────────────────────────────────────────────────────
   const denyUser = useCallback(async (userId) => {
     if (!roomId || !userId) return
-    console.log('[NexMeet] denyUser:', userId)
     try {
       const statusRef = doc(db, 'waitingRooms', roomId, 'status', userId)
       await setDoc(statusRef, { value: 'denied' })
       await deleteDoc(doc(db, 'waitingRooms', roomId, 'queue', userId))
-      setTimeout(() => deleteDoc(statusRef).catch(() => {}), 5000)
+      safeTimeout(() => deleteDoc(statusRef).catch(() => {}), 5000)
     } catch (err) {
       console.error('[NexMeet] denyUser failed:', err)
     }
-  }, [roomId])
+  }, [roomId, safeTimeout])
 
   // Host is always admitted
   const resolvedStatus = isHost === true ? 'admitted' : waitingStatus

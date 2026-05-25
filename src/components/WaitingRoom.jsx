@@ -1,327 +1,308 @@
-// WaitingRoom.jsx
 // src/components/WaitingRoom.jsx
-// FIX: Profile picture now shows correctly with proper fallback chain.
-// Nothing else changed.
+// OPTIMIZED: No inline style object recreation, CSS classes for animations,
+// single interval for both dots + timer, hover via CSS, stable keyframes.
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 
-export default function WaitingRoom({ roomId, user, isHost, onAdmitted, onDenied }) {
+// ─── Keyframes + CSS injected ONCE at module level, not on every render ───
+const STYLES = `
+  .wr-overlay {
+    position: fixed;
+    inset: 0;
+    background: #09090b;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    overflow: hidden;
+  }
+  .wr-orb {
+    position: absolute;
+    border-radius: 50%;
+    will-change: transform;
+  }
+  .wr-orb--1 {
+    width: 400px; height: 400px;
+    background: radial-gradient(circle, rgba(124,58,237,0.15) 0%, transparent 70%);
+    top: -100px; left: -100px;
+    animation: wr-float 6s ease-in-out infinite;
+  }
+  .wr-orb--2 {
+    width: 300px; height: 300px;
+    background: radial-gradient(circle, rgba(139,92,246,0.1) 0%, transparent 70%);
+    bottom: -50px; right: -50px;
+    animation: wr-float 8s ease-in-out infinite reverse;
+  }
+  .wr-card {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 24px;
+    padding: 40px 48px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    max-width: 420px;
+    width: 90%;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    animation: wr-fadein 0.5s ease-out both;
+    position: relative;
+    z-index: 1;
+  }
+  .wr-status-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(124,58,237,0.15);
+    border: 1px solid rgba(124,58,237,0.3);
+    border-radius: 100px;
+    padding: 6px 16px;
+    margin-bottom: 8px;
+  }
+  .wr-status-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: #a78bfa;
+    box-shadow: 0 0 8px #a78bfa;
+    display: inline-block;
+    animation: wr-pulse 1.5s ease-out infinite;
+    will-change: transform, opacity;
+  }
+  .wr-status-text {
+    color: #a78bfa;
+    font-size: 13px;
+    font-weight: 500;
+  }
+  .wr-avatar-wrapper {
+    position: relative;
+    width: 88px; height: 88px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 4px;
+  }
+  .wr-avatar-ring {
+    position: absolute;
+    inset: -6px;
+    border-radius: 50%;
+    border: 2px solid rgba(124,58,237,0.5);
+    animation: wr-pulse 2s ease-out infinite;
+    will-change: transform, opacity;
+  }
+  .wr-avatar {
+    width: 80px; height: 80px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid rgba(124,58,237,0.6);
+  }
+  .wr-avatar--initial {
+    width: 80px; height: 80px;
+    border-radius: 50%;
+    border: 2px solid rgba(124,58,237,0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #7c3aed, #3b82f6);
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: #fff;
+    font-family: system-ui, sans-serif;
+    user-select: none;
+  }
+  .wr-heading {
+    color: #fff;
+    font-size: 24px;
+    font-weight: 700;
+    margin: 0;
+    text-align: center;
+    min-width: 200px;
+  }
+  .wr-subtext {
+    color: #71717a;
+    font-size: 14px;
+    margin: 0;
+    text-align: center;
+    line-height: 1.6;
+  }
+  .wr-room-badge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 10px;
+    padding: 8px 16px;
+    margin-top: 4px;
+  }
+  .wr-room-id {
+    color: #a1a1aa;
+    font-size: 13px;
+    font-family: monospace;
+  }
+  .wr-timer-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .wr-timer-label { color: #52525b; font-size: 13px; }
+  .wr-timer-value {
+    color: #a78bfa;
+    font-size: 13px;
+    font-weight: 600;
+    font-family: monospace;
+  }
+  .wr-tip-box {
+    display: flex;
+    gap: 10px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 12px;
+    padding: 12px 16px;
+    margin-top: 4px;
+  }
+  .wr-tip-text { color: #52525b; font-size: 13px; line-height: 1.5; }
+  .wr-leave-btn {
+    margin-top: 8px;
+    background: transparent;
+    border: 1px solid rgba(255,255,255,0.1);
+    color: #71717a;
+    border-radius: 10px;
+    padding: 10px 32px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background 0.2s;
+    width: 100%;
+  }
+  .wr-leave-btn:hover { background: #3f3f46; }
 
-  // ✅ Safety net: if somehow host lands here, auto-admit immediately
-  useEffect(() => {
-    if (isHost) {
-      onAdmitted?.()
-    }
-  }, [isHost, onAdmitted])
+  @keyframes wr-pulse {
+    0%   { transform: scale(1);   opacity: 0.6; }
+    100% { transform: scale(1.5); opacity: 0; }
+  }
+  @keyframes wr-float {
+    0%, 100% { transform: translateY(0px); }
+    50%       { transform: translateY(-30px); }
+  }
+  @keyframes wr-fadein {
+    from { opacity: 0; transform: translateY(20px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+`;
 
-  // ✅ Don't render the waiting UI for the host at all
-  if (isHost) return null
-
-  return <WaitingUI roomId={roomId} user={user} onDenied={onDenied} />
+// Inject styles once — never on re-render
+if (typeof document !== "undefined" && !document.getElementById("wr-styles")) {
+  const el = document.createElement("style");
+  el.id = "wr-styles";
+  el.textContent = STYLES;
+  document.head.appendChild(el);
 }
 
+// ─── formatTime is pure — defined outside component so it's never recreated ───
+function formatTime(s) {
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return m > 0 ? `${m}m ${sec}s` : `${sec}s`;
+}
+
+// ─── Main export ──────────────────────────────────────────────────────────────
+export default function WaitingRoom({ roomId, user, isHost, onAdmitted, onDenied }) {
+  // Safety net: host auto-admits immediately
+  useEffect(() => {
+    if (isHost) onAdmitted?.();
+  }, [isHost, onAdmitted]);
+
+  if (isHost) return null;
+
+  return <WaitingUI roomId={roomId} user={user} onDenied={onDenied} />;
+}
+
+// ─── WaitingUI ────────────────────────────────────────────────────────────────
 function WaitingUI({ roomId, user, onDenied }) {
-  const [dots, setDots] = useState("");
-  const [timeWaiting, setTimeWaiting] = useState(0);
-  const [imgError, setImgError] = useState(false);  // ← NEW: track if photo fails to load
+  const [tick, setTick]       = useState(0);   // drives both dots + timer
+  const [imgError, setImgError] = useState(false);
 
-  // Animate the dots
+  // Single interval drives both the dots animation and the wait timer
+  // Avoids having two setInterval calls running simultaneously
+  const tickRef = useRef(0);
   useEffect(() => {
-    const interval = setInterval(() => {
-      setDots((prev) => (prev.length >= 3 ? "" : prev + "."));
+    const id = setInterval(() => {
+      tickRef.current += 1;
+      setTick(tickRef.current);
     }, 500);
-    return () => clearInterval(interval);
+    return () => clearInterval(id);
   }, []);
 
-  // Track wait time
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setTimeWaiting((prev) => prev + 1);
-    }, 1000);
-    return () => clearInterval(interval);
-  }, []);
+  // Derive dots and time from a single tick counter — no extra state
+  const dots        = useMemo(() => ".".repeat(tick % 4),          [tick]);
+  const timeWaiting = useMemo(() => Math.floor(tick / 2),          [tick]); // every 2 ticks = 1s
+  const timeLabel   = useMemo(() => formatTime(timeWaiting),       [timeWaiting]);
 
-  const formatTime = (s) => {
-    const m = Math.floor(s / 60);
-    const sec = s % 60;
-    return m > 0 ? `${m}m ${sec}s` : `${sec}s`;
-  };
+  // Stable callback — won't cause img remount on re-renders
+  const handleImgError = useCallback(() => setImgError(true), []);
 
-  // ── Avatar logic ──────────────────────────────────────────
-  // 1. Try user.photoURL first
-  // 2. If it errors or is missing, show initial letter avatar
   const displayName = user?.displayName || user?.email || "U";
   const initial     = displayName[0].toUpperCase();
-  const showPhoto   = user?.photoURL && !imgError;
+  const showPhoto   = Boolean(user?.photoURL) && !imgError;
 
   return (
-    <div style={styles.overlay}>
-      {/* Animated background orbs */}
-      <div style={styles.orb1} />
-      <div style={styles.orb2} />
+    <div className="wr-overlay">
+      <div className="wr-orb wr-orb--1" />
+      <div className="wr-orb wr-orb--2" />
 
-      <div style={styles.card}>
-        {/* Top status bar */}
-        <div style={styles.statusBar}>
-          <span style={styles.statusDot} />
-          <span style={styles.statusText}>Waiting for host</span>
+      <div className="wr-card">
+        {/* Status bar */}
+        <div className="wr-status-bar">
+          <span className="wr-status-dot" />
+          <span className="wr-status-text">Waiting for host</span>
         </div>
 
         {/* Avatar */}
-        <div style={styles.avatarWrapper}>
-          <div style={styles.avatarRing} />
-
+        <div className="wr-avatar-wrapper">
+          <div className="wr-avatar-ring" />
           {showPhoto ? (
-            // Real photo — onError flips imgError so we fall to initial
             <img
               src={user.photoURL}
               alt={displayName}
-              referrerPolicy="no-referrer"        // ← fixes Google photo 403s
+              referrerPolicy="no-referrer"
               crossOrigin="anonymous"
-              onError={() => setImgError(true)}   // ← graceful fallback
-              style={styles.avatar}
+              onError={handleImgError}
+              className="wr-avatar"
             />
           ) : (
-            // Initial letter avatar — no external request needed
-            <div style={{
-              ...styles.avatar,
-              display:         "flex",
-              alignItems:      "center",
-              justifyContent:  "center",
-              background:      "linear-gradient(135deg, #7c3aed, #3b82f6)",
-              fontSize:        "1.75rem",
-              fontWeight:      700,
-              color:           "#fff",
-              fontFamily:      "var(--font-display, system-ui)",
-              userSelect:      "none",
-            }}>
-              {initial}
-            </div>
+            <div className="wr-avatar--initial">{initial}</div>
           )}
         </div>
 
         {/* Text */}
-        <h2 style={styles.heading}>
-          Almost there{dots}
-        </h2>
-        <p style={styles.subtext}>
-          The host will let you in soon. Hang tight!
-        </p>
+        <h2 className="wr-heading">Almost there{dots}</h2>
+        <p className="wr-subtext">The host will let you in soon. Hang tight!</p>
 
-        {/* Room info */}
-        <div style={styles.roomBadge}>
-          <span style={styles.roomIcon}>🔗</span>
-          <span style={styles.roomId}>Room: {roomId}</span>
+        {/* Room badge */}
+        <div className="wr-room-badge">
+          <span style={{ fontSize: 14 }}>🔗</span>
+          <span className="wr-room-id">Room: {roomId}</span>
         </div>
 
-        {/* Wait timer */}
-        <div style={styles.timerRow}>
-          <span style={styles.timerLabel}>Waiting for</span>
-          <span style={styles.timerValue}>{formatTime(timeWaiting)}</span>
+        {/* Timer */}
+        <div className="wr-timer-row">
+          <span className="wr-timer-label">Waiting for</span>
+          <span className="wr-timer-value">{timeLabel}</span>
         </div>
 
-        {/* Tips */}
-        <div style={styles.tipBox}>
-          <span style={styles.tipIcon}>💡</span>
-          <span style={styles.tipText}>
+        {/* Tip */}
+        <div className="wr-tip-box">
+          <span style={{ fontSize: 14, flexShrink: 0 }}>💡</span>
+          <span className="wr-tip-text">
             Make sure your camera and mic are ready before you join.
           </span>
         </div>
 
-        {/* Leave button */}
-        <button
-          style={styles.leaveBtn}
-          onClick={onDenied}
-          onMouseEnter={(e) => (e.currentTarget.style.background = "#3f3f46")}
-          onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-        >
+        {/* Leave */}
+        <button className="wr-leave-btn" onClick={onDenied}>
           Leave
         </button>
       </div>
-
-      <style>{`
-        @keyframes pulse-ring {
-          0% { transform: scale(1); opacity: 0.6; }
-          100% { transform: scale(1.5); opacity: 0; }
-        }
-        @keyframes float-orb {
-          0%, 100% { transform: translateY(0px); }
-          50% { transform: translateY(-30px); }
-        }
-        @keyframes fade-in {
-          from { opacity: 0; transform: translateY(20px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-      `}</style>
     </div>
   );
 }
-
-const styles = {
-  overlay: {
-    position: "fixed",
-    inset: 0,
-    background: "#09090b",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 1000,
-    overflow: "hidden",
-  },
-  orb1: {
-    position: "absolute",
-    width: 400,
-    height: 400,
-    borderRadius: "50%",
-    background: "radial-gradient(circle, rgba(124,58,237,0.15) 0%, transparent 70%)",
-    top: -100,
-    left: -100,
-    animation: "float-orb 6s ease-in-out infinite",
-  },
-  orb2: {
-    position: "absolute",
-    width: 300,
-    height: 300,
-    borderRadius: "50%",
-    background: "radial-gradient(circle, rgba(139,92,246,0.1) 0%, transparent 70%)",
-    bottom: -50,
-    right: -50,
-    animation: "float-orb 8s ease-in-out infinite reverse",
-  },
-  card: {
-    background: "rgba(255,255,255,0.03)",
-    border: "1px solid rgba(255,255,255,0.08)",
-    borderRadius: 24,
-    padding: "40px 48px",
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    gap: 16,
-    maxWidth: 420,
-    width: "90%",
-    backdropFilter: "blur(20px)",
-    animation: "fade-in 0.5s ease-out",
-    position: "relative",
-    zIndex: 1,
-  },
-  statusBar: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    background: "rgba(124,58,237,0.15)",
-    border: "1px solid rgba(124,58,237,0.3)",
-    borderRadius: 100,
-    padding: "6px 16px",
-    marginBottom: 8,
-  },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: "50%",
-    background: "#a78bfa",
-    boxShadow: "0 0 8px #a78bfa",
-    display: "inline-block",
-    animation: "pulse-ring 1.5s ease-out infinite",
-  },
-  statusText: {
-    color: "#a78bfa",
-    fontSize: 13,
-    fontWeight: 500,
-  },
-  avatarWrapper: {
-    position: "relative",
-    width: 88,
-    height: 88,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 4,
-  },
-  avatarRing: {
-    position: "absolute",
-    inset: -6,
-    borderRadius: "50%",
-    border: "2px solid rgba(124,58,237,0.5)",
-    animation: "pulse-ring 2s ease-out infinite",
-  },
-  avatar: {
-    width: 80,
-    height: 80,
-    borderRadius: "50%",
-    objectFit: "cover",
-    border: "2px solid rgba(124,58,237,0.6)",
-  },
-  heading: {
-    color: "#fff",
-    fontSize: 24,
-    fontWeight: 700,
-    margin: 0,
-    textAlign: "center",
-    minWidth: 200,
-  },
-  subtext: {
-    color: "#71717a",
-    fontSize: 14,
-    margin: 0,
-    textAlign: "center",
-    lineHeight: 1.6,
-  },
-  roomBadge: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    background: "rgba(255,255,255,0.05)",
-    border: "1px solid rgba(255,255,255,0.08)",
-    borderRadius: 10,
-    padding: "8px 16px",
-    marginTop: 4,
-  },
-  roomIcon: { fontSize: 14 },
-  roomId: {
-    color: "#a1a1aa",
-    fontSize: 13,
-    fontFamily: "monospace",
-  },
-  timerRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-  },
-  timerLabel: {
-    color: "#52525b",
-    fontSize: 13,
-  },
-  timerValue: {
-    color: "#a78bfa",
-    fontSize: 13,
-    fontWeight: 600,
-    fontFamily: "monospace",
-  },
-  tipBox: {
-    display: "flex",
-    gap: 10,
-    background: "rgba(255,255,255,0.03)",
-    border: "1px solid rgba(255,255,255,0.06)",
-    borderRadius: 12,
-    padding: "12px 16px",
-    marginTop: 4,
-  },
-  tipIcon: { fontSize: 14, flexShrink: 0 },
-  tipText: {
-    color: "#52525b",
-    fontSize: 13,
-    lineHeight: 1.5,
-  },
-  leaveBtn: {
-    marginTop: 8,
-    background: "transparent",
-    border: "1px solid rgba(255,255,255,0.1)",
-    color: "#71717a",
-    borderRadius: 10,
-    padding: "10px 32px",
-    fontSize: 14,
-    cursor: "pointer",
-    transition: "all 0.2s",
-    width: "100%",
-  },
-};
