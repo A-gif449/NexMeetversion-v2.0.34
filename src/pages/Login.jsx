@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams, Link } from 'react-router-dom'
 import {
-  signInEmail, signUpEmail, signInGoogle, resetPassword
+  signInEmail, signUpEmail, signInGoogle, resetPassword, signInGuest
 } from '../firebase/config'
 import { useAuth } from '../firebase/AuthContext'
 import Footer from '../components/Footer'
@@ -50,6 +50,18 @@ export default function Login() {
     clearMessages(); setLoading(true)
     try {
       await signInGoogle()
+      navigate('/rooms')
+    } catch (err) {
+      setError(friendlyError(err.code || err.message))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleGuest = async () => {
+    clearMessages(); setLoading(true)
+    try {
+      await signInGuest()
       navigate('/rooms')
     } catch (err) {
       setError(friendlyError(err.code || err.message))
@@ -297,9 +309,27 @@ export default function Login() {
               {/* Google */}
               <button onClick={handleGoogle} disabled={loading}
                 className="btn btn-outline btn-full"
-                style={{ gap: 10, padding: '11px', fontSize: '0.85rem' }}>
+                style={{ gap: 10, padding: '11px', fontSize: '0.85rem', marginBottom: '0.75rem' }}>
                 <GoogleIcon />
                 Continue with Google
+              </button>
+
+              {/* Guest */}
+              <button onClick={handleGuest} disabled={loading}
+                style={{
+                  width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  gap: 8, padding: '11px', fontSize: '0.85rem',
+                  background: 'rgba(255,255,255,0.03)',
+                  border: '0.5px solid var(--border)',
+                  color: 'var(--text-3)',
+                  borderRadius: 'var(--radius-md)',
+                  cursor: 'pointer', fontFamily: 'var(--font-body)',
+                  transition: 'all 0.2s',
+                }}
+                onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--border-purple)'}
+                onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
+              >
+                👤 Continue as Guest
               </button>
 
               <p style={{ textAlign: 'center', fontSize: '0.75rem', color: 'var(--text-4)', marginTop: '1.25rem' }}>

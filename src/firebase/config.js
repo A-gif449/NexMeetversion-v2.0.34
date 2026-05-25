@@ -1,8 +1,4 @@
 // src/firebase/config.js
-// ─────────────────────────────────────────────
-// Replace the values below with your own Firebase
-// project credentials from the Firebase Console.
-// ─────────────────────────────────────────────
 import { initializeApp } from 'firebase/app'
 import {
   getAuth,
@@ -14,6 +10,7 @@ import {
   updateProfile,
   signOut,
   onAuthStateChanged,
+  signInAnonymously,
 } from 'firebase/auth'
 import { getFirestore } from 'firebase/firestore'
 
@@ -48,3 +45,5 @@ export const resetPassword = (email) => sendPasswordResetEmail(auth, email)
 export const logOut = () => signOut(auth)
 
 export const onAuth = (cb) => onAuthStateChanged(auth, cb)
+
+export const signInGuest = () => signInAnonymously(auth)

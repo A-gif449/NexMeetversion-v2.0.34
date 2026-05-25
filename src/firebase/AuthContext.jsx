@@ -10,6 +10,7 @@ import {
   resetPassword,
   logOut,
   onAuth,
+  signInGuest,
 } from './config'
 
 // ── Context ───────────────────────────────────────────────────────────────────
@@ -48,6 +49,7 @@ export function AuthProvider({ children }) {
     signUpEmail,                           // email + password register (sets displayName)
     resetPassword,                         // send password-reset email
     logOut,                                // sign out
+    signInGuest,                           // anonymous guest sign-in
   }
 
   // Don't render children until Firebase has resolved the initial auth state.

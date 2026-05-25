@@ -78,27 +78,35 @@ export default function Navbar() {
                   background: 'var(--bg-card)', borderRadius: 100,
                   border: '0.5px solid var(--border)',
                 }}>
+                  {/* Avatar */}
                   <div style={{
                     width: 28, height: 28, borderRadius: '50%',
-                    background: 'linear-gradient(135deg, var(--purple), var(--blue))',
+                    background: user.isAnonymous
+                      ? 'linear-gradient(135deg, #555, #333)'
+                      : 'linear-gradient(135deg, var(--purple), var(--blue))',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     fontSize: '0.7rem', fontWeight: 700, color: '#fff',
                     overflow: 'hidden', flexShrink: 0,
                   }}>
-                    {user.photoURL
-                      ? <img src={user.photoURL} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                      : (user.displayName || user.email || 'U')[0].toUpperCase()
+                    {user.isAnonymous
+                      ? '👤'
+                      : user.photoURL
+                        ? <img src={user.photoURL} alt="" referrerPolicy="no-referrer" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        : (user.displayName || user.email || 'U')[0].toUpperCase()
                     }
                   </div>
+                  {/* Name */}
                   <span style={{
                     fontSize: '0.78rem', color: 'var(--text-2)',
                     maxWidth: 100, overflow: 'hidden',
                     textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                   }}>
-                    {user.displayName || user.email?.split('@')[0]}
+                    {user.isAnonymous ? 'Guest' : (user.displayName || user.email?.split('@')[0])}
                   </span>
                 </div>
-                <button className="btn btn-outline btn-sm" onClick={handleLogout}>Sign out</button>
+                <button className="btn btn-outline btn-sm" onClick={handleLogout}>
+                  {user.isAnonymous ? 'Sign in' : 'Sign out'}
+                </button>
               </>
             ) : (
               <>
@@ -167,22 +175,26 @@ export default function Navbar() {
               }}>
                 <div style={{
                   width: 36, height: 36, borderRadius: '50%',
-                  background: 'linear-gradient(135deg, var(--purple), var(--blue))',
+                  background: user.isAnonymous
+                    ? 'linear-gradient(135deg, #555, #333)'
+                    : 'linear-gradient(135deg, var(--purple), var(--blue))',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontSize: '0.85rem', fontWeight: 700, color: '#fff',
                   overflow: 'hidden', flexShrink: 0,
                 }}>
-                  {user.photoURL
-                    ? <img src={user.photoURL} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    : (user.displayName || user.email || 'U')[0].toUpperCase()
+                  {user.isAnonymous
+                    ? '👤'
+                    : user.photoURL
+                      ? <img src={user.photoURL} alt="" referrerPolicy="no-referrer" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      : (user.displayName || user.email || 'U')[0].toUpperCase()
                   }
                 </div>
                 <div>
                   <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-1)' }}>
-                    {user.displayName || 'User'}
+                    {user.isAnonymous ? 'Guest' : (user.displayName || 'User')}
                   </div>
                   <div style={{ fontSize: '0.72rem', color: 'var(--text-4)' }}>
-                    {user.email}
+                    {user.isAnonymous ? 'Browsing as guest' : user.email}
                   </div>
                 </div>
               </div>
@@ -190,16 +202,19 @@ export default function Navbar() {
               <MobileNavLink to="/rooms"   onClick={() => setMenuOpen(false)} active={isActive('/rooms')}>🏠 Rooms</MobileNavLink>
               <MobileNavLink to="/pricing" onClick={() => setMenuOpen(false)} active={isActive('/pricing')}>💎 Pricing</MobileNavLink>
               <MobileNavLink to="/support" onClick={() => setMenuOpen(false)} active={isActive('/support')}>🛟 Support</MobileNavLink>
+
               <button
                 onClick={handleLogout}
                 style={{
                   width: '100%', padding: '12px', borderRadius: 'var(--radius-sm)',
-                  background: 'rgba(239,68,68,0.08)', border: '0.5px solid rgba(239,68,68,0.2)',
-                  color: '#f87171', fontSize: '0.875rem', cursor: 'pointer',
+                  background: user.isAnonymous ? 'var(--purple-dim)' : 'rgba(239,68,68,0.08)',
+                  border: user.isAnonymous ? '0.5px solid var(--border-purple)' : '0.5px solid rgba(239,68,68,0.2)',
+                  color: user.isAnonymous ? '#a78bfa' : '#f87171',
+                  fontSize: '0.875rem', cursor: 'pointer',
                   fontFamily: 'var(--font-body)', marginTop: 4,
                 }}
               >
-                Sign out
+                {user.isAnonymous ? 'Sign in to save progress' : 'Sign out'}
               </button>
             </>
           )}
