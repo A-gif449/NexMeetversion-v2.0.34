@@ -428,7 +428,19 @@ export default function Room() {
   const handleFeedbackSubmit = (data) => { console.log('[NexMeet] Meeting feedback:', data) }
   const handleFeedbackClose  = () => { setShowFeedback(false); navigate('/rooms') }
 
-  const fmt = (s) => `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`
+  // ── FIX 2: Advanced timer — hours support + color thresholds ──
+  const fmt = (s) => {
+    const h = Math.floor(s / 3600)
+    const m = Math.floor((s % 3600) / 60)
+    const sec = s % 60
+    return h > 0
+      ? `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`
+      : `${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`
+  }
+  const timerColor  = elapsed >= 3600 ? '#fb923c' : elapsed >= 1800 ? '#facc15' : '#f87171'
+  const timerBorder = elapsed >= 3600 ? 'rgba(251,146,60,0.25)' : elapsed >= 1800 ? 'rgba(250,204,21,0.22)' : 'rgba(239,68,68,0.18)'
+  const timerBg     = elapsed >= 3600 ? 'rgba(251,146,60,0.06)' : elapsed >= 1800 ? 'rgba(250,204,21,0.06)' : 'rgba(239,68,68,0.06)'
+
   const peerList        = Object.entries(peers)
   const allParticipants = [
     { name: user?.displayName || 'You', isLocal: true, handRaised },
@@ -580,9 +592,17 @@ export default function Room() {
             justify-content: space-around !important;
           }
 
-          /* Video grid full-width */
+          /* FIX 1: Video grid — force 2-column layout on mobile for 3+ participants */
           .nm-video-grid {
             padding: 0.5rem !important;
+          }
+          .nm-video-grid > div {
+            grid-template-columns: repeat(2, 1fr) !important;
+            max-width: 100% !important;
+            align-items: start !important;
+          }
+          .nm-video-grid > div[data-solo="true"] {
+            grid-template-columns: 1fr !important;
           }
 
           /* Holo-tile hover effect off on mobile (no mouse) */
@@ -746,9 +766,18 @@ export default function Room() {
               {allParticipants.length}
             </div>
 
+            {/* FIX 3: Professional private room icon — SVG lock with label */}
             {isPrivateRoom && (
-              <span className="nm-topbar-private" style={{ fontSize: '0.62rem', color: '#a78bfa', background: 'rgba(124,58,237,0.08)', border: '0.5px solid rgba(124,58,237,0.25)', padding: '2px 8px', borderRadius: 100, flexShrink: 0 }}>🔒</span>
+              <span className="nm-topbar-private" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.62rem', color: '#a78bfa', background: 'rgba(124,58,237,0.08)', border: '0.5px solid rgba(124,58,237,0.25)', padding: '3px 9px 3px 7px', borderRadius: 100, flexShrink: 0, letterSpacing: '0.04em', fontWeight: 600 }}>
+                <svg width="9" height="10" viewBox="0 0 9 10" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <rect x="1" y="4.5" width="7" height="5" rx="1.2" fill="rgba(124,58,237,0.25)" stroke="#a78bfa" strokeWidth="0.8"/>
+                  <path d="M2.5 4.5V3a2 2 0 0 1 4 0v1.5" stroke="#a78bfa" strokeWidth="0.85" strokeLinecap="round" fill="none"/>
+                  <circle cx="4.5" cy="7" r="0.8" fill="#a78bfa"/>
+                </svg>
+                Private
+              </span>
             )}
+
             {isHost && waitingUsers.length > 0 && (
               <span style={{ fontSize: '0.65rem', color: '#a78bfa', background: 'rgba(124,58,237,0.1)', border: '0.5px solid rgba(124,58,237,0.3)', padding: '2px 8px', borderRadius: 100, display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
                 <span style={{ width: 4, height: 4, borderRadius: '50%', background: '#a78bfa', display: 'inline-block', animation: 'nm-pulse-dot 1.5s infinite' }} />
@@ -757,10 +786,10 @@ export default function Room() {
             )}
           </div>
 
-          {/* Center — timer */}
-          <div className="nm-topbar-timer" style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(239,68,68,0.06)', border: '0.5px solid rgba(239,68,68,0.18)', borderRadius: 100, padding: '4px 12px', flexShrink: 0 }}>
-            <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#ef4444', display: 'inline-block', animation: 'nm-pulse-dot 2s infinite', boxShadow: '0 0 6px #ef4444' }} />
-            <span style={{ fontSize: '0.78rem', color: '#f87171', fontFamily: 'monospace', letterSpacing: '0.1em' }}>{fmt(elapsed)}</span>
+          {/* Center — FIX 2: Advanced timer with color transitions */}
+          <div className="nm-topbar-timer" style={{ display: 'flex', alignItems: 'center', gap: 6, background: timerBg, border: `0.5px solid ${timerBorder}`, borderRadius: 100, padding: '4px 12px', flexShrink: 0, transition: 'all 1s ease' }}>
+            <span style={{ width: 5, height: 5, borderRadius: '50%', background: timerColor, display: 'inline-block', animation: 'nm-pulse-dot 2s infinite', boxShadow: `0 0 6px ${timerColor}`, transition: 'background 1s ease' }} />
+            <span style={{ fontSize: '0.78rem', color: timerColor, fontFamily: 'monospace', letterSpacing: '0.1em', transition: 'color 1s ease' }}>{fmt(elapsed)}</span>
           </div>
 
           {/* Right — copy link (hidden on mobile) */}
@@ -786,12 +815,20 @@ export default function Room() {
             <div style={{ position: 'absolute', bottom: 16, left: 16, width: 40, height: 40, borderBottom: '1px solid rgba(124,58,237,0.25)', borderLeft: '1px solid rgba(124,58,237,0.25)', borderRadius: '0 0 0 2px' }} />
             <div style={{ position: 'absolute', bottom: 16, right: 16, width: 40, height: 40, borderBottom: '1px solid rgba(124,58,237,0.25)', borderRight: '1px solid rgba(124,58,237,0.25)', borderRadius: '0 0 2px 0' }} />
 
-            <div style={{
-              width: '100%', maxWidth: 980,
-              display: 'grid',
-              gridTemplateColumns: peerList.length === 0 ? '1fr' : peerList.length === 1 ? 'repeat(2,1fr)' : 'repeat(auto-fit, minmax(280px,1fr))',
-              gap: '0.9rem',
-            }}>
+            {/* FIX 1: Smart grid columns — √n capped at 3, data-solo for single-user */}
+            <div
+              data-solo={peerList.length === 0 ? 'true' : undefined}
+              style={{
+                width: '100%', maxWidth: 980,
+                display: 'grid',
+                gridTemplateColumns: peerList.length === 0
+                  ? '1fr'
+                  : peerList.length === 1
+                  ? 'repeat(2,1fr)'
+                  : `repeat(${Math.min(Math.ceil(Math.sqrt(peerList.length + 1)), 3)}, 1fr)`,
+                gap: '0.75rem',
+              }}
+            >
               <VideoTile
                 name={user?.displayName || 'You'} isLocal
                 videoRef={videoRef} stream={streamRef.current}

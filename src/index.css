@@ -75,6 +75,21 @@
     align-items: flex-start !important;
   }
 
+  /* FIX 4: Force 2-column grid on mobile for all participant counts */
+  .nm-video-grid > div {
+    grid-template-columns: repeat(2, 1fr) !important;
+    max-width: 100% !important;
+    align-items: start !important;
+  }
+  /* Solo view (only local user): stay full width */
+  .nm-video-grid > div[data-solo="true"] {
+    grid-template-columns: 1fr !important;
+  }
+  /* If only one tile in a 2-col grid, span it full width */
+  .nm-video-grid > div > .holo-tile:only-child {
+    grid-column: 1 / -1;
+  }
+
   /* Reaction picker: full-width across the screen bottom */
   .nm-reaction-picker {
     left: 8px !important;
