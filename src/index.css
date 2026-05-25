@@ -1,288 +1,138 @@
-/* ─── NexMeet Global CSS ─────────────────────────────────── */
-:root {
-  /* Brand */
-  --purple:      #7c3aed;
-  --purple-dim:  rgba(124,58,237,0.15);
-  --purple-glow: rgba(124,58,237,0.4);
-  --blue:        #3b82f6;
-  --teal:        #14b8a6;
+/* ─── NexMeet Mobile Fixes — append to end of index.css ────────
+   Safe to append: only adds new rules, overrides nothing above.
+   ──────────────────────────────────────────────────────────────── */
 
-  /* Backgrounds */
-  --bg-void:   #05050f;          /* ← changed from #09090b */
-  --bg-card:   rgba(255,255,255,0.03);
-  --bg-hover:  rgba(255,255,255,0.05);
-
-  /* Text */
-  --text-1: #f4f4f5;
-  --text-2: #a1a1aa;
-  --text-3: #71717a;
-  --text-4: #52525b;
-
-  /* Borders */
-  --border:        rgba(255,255,255,0.08);
-  --border-purple: rgba(124,58,237,0.3);
-
-  /* Radius */
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
-  --radius-xl: 24px;
-
-  /* Typography */
-  --font-display: 'Inter', system-ui, sans-serif;
-  --font-body:    'Inter', system-ui, sans-serif;
-  --font-mono:    ui-monospace, 'Cascadia Code', monospace;
-
-  font-size: 16px;
-  line-height: 1.5;
-  font-family: var(--font-body);
-  color: var(--text-1);
-  background: transparent;       /* ← changed from var(--bg-void) */
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  color-scheme: dark;
+/* Use dynamic viewport height on mobile (avoids iOS address bar bug) */
+.nm-room-root {
+  height: 100dvh;
 }
 
-/* ─── Reset ──────────────────────────────────────────────── */
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-body { overflow-x: hidden; min-height: 100svh; background: transparent; } /* ← added background: transparent */
-
-#root { min-height: 100svh; }
-
-img, video { max-width: 100%; display: block; }
-
-button { font-family: var(--font-body); }
-
-/* ─── Layout ─────────────────────────────────────────────── */
-.container {
-  width: 100%;
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 0 1.5rem;
+/* Ensure the controls bar never clips buttons on mobile */
+.nm-controls-bar {
+  box-sizing: border-box;
+  /* safe-area-inset handles iPhone home indicator */
+  padding-bottom: max(0px, env(safe-area-inset-bottom));
 }
 
+/* Leave button: always visible, stronger red tint so it stands out */
+.nm-leave-btn {
+  background: rgba(239, 68, 68, 0.12) !important;
+  border: 1px solid rgba(239, 68, 68, 0.5) !important;
+  color: #f87171 !important;
+}
+.nm-leave-btn:hover {
+  background: rgba(239, 68, 68, 0.22) !important;
+}
+
+/* Control buttons: disable the hover-float on touch devices */
+@media (hover: none) {
+  .ctrl-btn:hover  { transform: none !important; }
+  .holo-tile:hover { transform: none !important; box-shadow: none !important; }
+}
+
+/* ── Mobile (≤ 768px) ──────────────────────────────────────────── */
 @media (max-width: 768px) {
-  .container { padding: 0 1rem; }
+  /* Controls bar: auto height, wrap into up to 2 rows */
+  .nm-controls-bar {
+    height: auto !important;
+    min-height: 76px;
+    padding: 10px 8px !important;
+    flex-wrap: wrap !important;
+    align-content: center;
+    gap: 6px !important;
+    justify-content: center !important;
+  }
+
+  /* Individual buttons: slightly smaller, still 44 px+ touch target */
+  .ctrl-btn {
+    width: 52px !important;
+    height: 56px !important;
+    border-radius: 12px !important;
+    gap: 3px !important;
+  }
+
+  /* Leave button slightly taller for prominence */
+  .nm-leave-btn {
+    width: 58px !important;
+    height: 56px !important;
+    border-radius: 12px !important;
+  }
+
+  /* Hide desktop-only decorative dividers */
+  .nm-holo-divider { display: none !important; }
+
+  /* Top-bar: hide the non-essential text to keep it uncluttered */
+  .nm-topbar-roomid  { display: none !important; }
+  .nm-topbar-private { display: none !important; }
+  .nm-topbar-copy    { display: none !important; }
+
+  /* Side panels: replaced by mobile bottom-sheet drawer */
+  .holo-panel { display: none !important; }
+
+  /* Video grid: tighter padding on mobile */
+  .nm-video-grid {
+    padding: 0.5rem !important;
+    align-items: flex-start !important;
+  }
+
+  /* Reaction picker: full-width across the screen bottom */
+  .nm-reaction-picker {
+    left: 8px !important;
+    right: 8px !important;
+    bottom: calc(100% + 8px) !important;
+    transform: none !important;
+    justify-content: space-around !important;
+    border-radius: 16px !important;
+  }
+
+  /* Toast: keep within safe viewport */
+  .nm-toast {
+    max-width: calc(100vw - 32px) !important;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
 }
 
+/* ── Very small phones (≤ 480px) ───────────────────────────────── */
 @media (max-width: 480px) {
-  .container { padding: 0 0.75rem; }
+  .ctrl-btn {
+    width: 46px !important;
+    height: 50px !important;
+    border-radius: 10px !important;
+  }
+
+  .nm-leave-btn {
+    width: 52px !important;
+    height: 50px !important;
+  }
+
+  .nm-controls-bar {
+    gap: 4px !important;
+    padding: 8px 4px 10px !important;
+  }
+
+  /* Reduce icon label font size a touch */
+  .ctrl-btn span[style*="0.55rem"] {
+    font-size: 0.5rem !important;
+  }
 }
 
-/* ─── Grid bg ────────────────────────────────────────────── */
-.grid-bg {
-  position: fixed; inset: 0; pointer-events: none; z-index: 0;
-  background-image:
-    linear-gradient(rgba(124,58,237,0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(124,58,237,0.03) 1px, transparent 1px);
-  background-size: 40px 40px;
-}
+/* ── Landscape mobile (height ≤ 480px) — keep bar slim ─────────── */
+@media (max-height: 480px) and (max-width: 900px) {
+  .nm-controls-bar {
+    min-height: 60px !important;
+    padding: 6px 8px !important;
+    gap: 4px !important;
+  }
 
-/* ─── Orbs ───────────────────────────────────────────────── */
-.orb {
-  position: absolute; border-radius: 50%;
-  filter: blur(80px); pointer-events: none;
-}
-.orb-purple { background: radial-gradient(circle, rgba(124,58,237,0.3), transparent 70%); }
-.orb-blue   { background: radial-gradient(circle, rgba(59,130,246,0.2), transparent 70%); }
+  .ctrl-btn {
+    width: 46px !important;
+    height: 48px !important;
+  }
 
-/* ─── Cards ──────────────────────────────────────────────── */
-.card {
-  background: var(--bg-card);
-  border: 0.5px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 1.5rem;
+  .nm-leave-btn {
+    width: 52px !important;
+    height: 48px !important;
+  }
 }
-
-@media (max-width: 480px) {
-  .card { padding: 1rem; border-radius: var(--radius-md); }
-}
-
-/* ─── Buttons ────────────────────────────────────────────── */
-.btn {
-  display: inline-flex; align-items: center; justify-content: center;
-  gap: 6px; border-radius: var(--radius-sm); font-weight: 500;
-  cursor: pointer; transition: all 0.2s; text-decoration: none;
-  white-space: nowrap; border: none; font-family: var(--font-body);
-}
-
-.btn-primary {
-  background: var(--purple); color: #fff; border: none;
-  box-shadow: 0 0 20px rgba(124,58,237,0.3);
-}
-.btn-primary:hover { background: #6d28d9; box-shadow: 0 0 30px rgba(124,58,237,0.5); }
-
-.btn-outline {
-  background: transparent; color: var(--text-2);
-  border: 0.5px solid var(--border);
-}
-.btn-outline:hover { border-color: rgba(255,255,255,0.2); color: var(--text-1); }
-
-.btn-ghost {
-  background: transparent; color: var(--text-3); border: none;
-}
-.btn-ghost:hover { color: var(--text-1); }
-
-.btn-full { width: 100%; }
-
-/* Sizes */
-.btn-sm  { padding: 7px 14px; font-size: 0.8rem; }
-.btn-md  { padding: 10px 20px; font-size: 0.875rem; }
-.btn-lg  { padding: 13px 28px; font-size: 1rem; }
-
-@media (max-width: 480px) {
-  .btn-sm { padding: 6px 12px; font-size: 0.75rem; }
-  .btn-lg { padding: 11px 22px; font-size: 0.9rem; }
-}
-
-/* ─── Form inputs ────────────────────────────────────────── */
-.input-field {
-  width: 100%; padding: 10px 14px; font-size: 0.875rem;
-  background: rgba(255,255,255,0.04); border: 0.5px solid var(--border);
-  border-radius: var(--radius-sm); color: var(--text-1); outline: none;
-  transition: border-color 0.2s; font-family: var(--font-body);
-}
-.input-field:focus { border-color: rgba(124,58,237,0.5); }
-.input-field::placeholder { color: var(--text-4); }
-
-/* ─── Badges ─────────────────────────────────────────────── */
-.badge {
-  display: inline-flex; align-items: center; gap: 4px;
-  padding: 3px 10px; border-radius: 100px;
-  font-size: 0.7rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase;
-}
-.badge-purple {
-  background: rgba(124,58,237,0.15); color: #a78bfa;
-  border: 0.5px solid rgba(124,58,237,0.3);
-}
-.badge-teal {
-  background: rgba(20,184,166,0.15); color: #2dd4bf;
-  border: 0.5px solid rgba(20,184,166,0.3);
-}
-
-/* ─── Messages ───────────────────────────────────────────── */
-.msg-error {
-  background: rgba(239,68,68,0.08); border: 0.5px solid rgba(239,68,68,0.3);
-  color: #f87171; border-radius: var(--radius-sm); padding: 10px 14px; font-size: 0.82rem;
-}
-
-/* ─── Animations ─────────────────────────────────────────── */
-@keyframes pulse-glow {
-  0%,100% { box-shadow: 0 0 20px rgba(124,58,237,0.3); }
-  50%      { box-shadow: 0 0 40px rgba(124,58,237,0.6); }
-}
-@keyframes fade-up {
-  from { opacity: 0; transform: translateY(16px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-@keyframes spin { to { transform: rotate(360deg); } }
-@keyframes float-orb {
-  0%,100% { transform: translateY(0); }
-  50%      { transform: translateY(-20px); }
-}
-
-.fade-up   { animation: fade-up 0.5s ease both; }
-.fade-up-1 { animation: fade-up 0.5s 0.1s ease both; }
-.fade-up-2 { animation: fade-up 0.5s 0.2s ease both; }
-.fade-up-3 { animation: fade-up 0.5s 0.3s ease both; }
-.fade-up-4 { animation: fade-up 0.5s 0.4s ease both; }
-
-/* ─── Scrollbar ──────────────────────────────────────────── */
-::-webkit-scrollbar { width: 4px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
-
-/* ─── Mobile touch improvements ──────────────────────────── */
-@media (max-width: 768px) {
-  button, a { -webkit-tap-highlight-color: transparent; }
-  input, select, textarea { font-size: 16px !important; } /* prevent iOS zoom */
-}
-
-/* ─── NexMeet Holographic Room Mode ─────────────────────────
-   APPEND these styles to your existing index.css
-   ─────────────────────────────────────────────────────────── */
-
-/* ─── Holographic tile hover parallax ───────────────────── */
-.holo-tile {
-  will-change: transform;
-  transform-style: preserve-3d;
-}
-
-/* ─── Control bar glass morphism ────────────────────────── */
-.holo-panel {
-  background: rgba(4, 4, 14, 0.96);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  border-left: 0.5px solid rgba(124, 58, 237, 0.2);
-}
-
-/* ─── Holographic hex grid bg ───────────────────────────── */
-@keyframes hexPulse {
-  0%, 100% { opacity: 0.6; }
-  50%       { opacity: 1;   }
-}
-
-/* ─── Glowing audio ring ────────────────────────────────── */
-@keyframes audioRing {
-  0%   { transform: scale(1);   opacity: 0.5; }
-  100% { transform: scale(2.2); opacity: 0;   }
-}
-
-/* ─── Ambient orb drift ─────────────────────────────────── */
-@keyframes orbDrift1 {
-  0%, 100% { transform: translate(0, 0);     }
-  50%      { transform: translate(40px, -30px); }
-}
-@keyframes orbDrift2 {
-  0%, 100% { transform: translate(0, 0);      }
-  50%      { transform: translate(-30px, 40px); }
-}
-@keyframes orbDrift3 {
-  0%, 100% { transform: translate(0, 0);      }
-  50%      { transform: translate(20px, -20px); }
-}
-
-/* ─── Holo shimmer ──────────────────────────────────────── */
-@keyframes holoShimmer {
-  0%, 100% { opacity: 0.6; }
-  50%       { opacity: 1;   }
-}
-
-/* ─── Scanline move ─────────────────────────────────────── */
-@keyframes scanMove {
-  0%   { background-position: 0 0;     }
-  100% { background-position: 0 100px; }
-}
-
-/* ─── Tile entrance ─────────────────────────────────────── */
-@keyframes tileEntrance {
-  from { opacity: 0; transform: translateY(20px) scale(0.96); }
-  to   { opacity: 1; transform: translateY(0)    scale(1);    }
-}
-
-/* ─── Control button entrance ───────────────────────────── */
-@keyframes controlEntrance {
-  from { opacity: 0; transform: translateY(24px); }
-  to   { opacity: 1; transform: translateY(0);    }
-}
-
-/* ─── Glow pulse on active tiles ────────────────────────── */
-@keyframes glowPulse {
-  0%, 100% { box-shadow: 0 0 20px rgba(124, 58, 237, 0.2); }
-  50%       { box-shadow: 0 0 40px rgba(124, 58, 237, 0.45); }
-}
-
-/* ─── Chat input focus ring ─────────────────────────────── */
-.chat-input:focus {
-  border-color: rgba(124, 58, 237, 0.6) !important;
-  box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.12),
-              0 0 16px rgba(124, 58, 237, 0.1);
-}
-
-/* ─── Scrollbar in holographic panels ───────────────────── */
-.holo-panel ::-webkit-scrollbar       { width: 3px; }
-.holo-panel ::-webkit-scrollbar-track { background: transparent; }
-.holo-panel ::-webkit-scrollbar-thumb { background: rgba(124, 58, 237, 0.3); border-radius: 2px; }
-.holo-panel ::-webkit-scrollbar-thumb:hover { background: rgba(124, 58, 237, 0.5); }

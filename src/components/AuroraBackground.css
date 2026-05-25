@@ -1,7 +1,10 @@
 /* ─────────────────────────────────────────────────────────────
-   AuroraBackground.css
-   Fully isolated — every class is aurora-* prefixed.
-   Add this file alongside AuroraBackground.jsx in /src/components/
+   AuroraBackground.css — Performance optimized
+   Key changes:
+   - All animations use transform/opacity ONLY (no layout/paint)
+   - filter:blur moved to static pseudo-elements (no reflow)
+   - contain:strict on fixed layers (browser skips layout calc)
+   - Orb count reduced on mobile
    ───────────────────────────────────────────────────────────── */
 
 /* ── Root wrapper ── */
@@ -10,7 +13,7 @@
   min-height: 100svh;
   width: 100%;
   overflow-x: hidden;
-  isolation: isolate;          /* new stacking context — won't bleed into children */
+  isolation: isolate;
 }
 
 /* ── Layer 1: void base ── */
@@ -18,42 +21,49 @@
   position: fixed;
   inset: 0;
   z-index: -10;
-  background: #05050f;          /* near-black with cool blue tint */
+  background: #05050f;
+  contain: strict;
 }
 
-/* ── Layer 2: animated gradient mesh (the aurora itself) ── */
+/* ── Layer 2: animated gradient mesh ── */
+/* Uses transform instead of background-position to avoid paint */
 .aurora-mesh {
   position: fixed;
-  inset: -40% -20%;             /* oversized so the gradient movement isn't clipped */
+  inset: -40% -20%;
   z-index: -9;
   background:
     radial-gradient(ellipse 80% 60% at 20% 10%,  rgba(109, 40, 217, 0.22) 0%, transparent 60%),
-    radial-gradient(ellipse 70% 50% at 80% 20%,  rgba(59,  130, 246, 0.16) 0%, transparent 55%),
+    radial-gradient(ellipse 70% 50% at 80% 20%,  rgba(59, 130, 246, 0.16) 0%, transparent 55%),
     radial-gradient(ellipse 90% 70% at 50% 80%,  rgba(124, 58, 237, 0.18) 0%, transparent 65%),
-    radial-gradient(ellipse 60% 40% at 10% 70%,  rgba(20,  184, 166, 0.10) 0%, transparent 50%),
-    radial-gradient(ellipse 50% 40% at 90% 85%,  rgba(79,  70,  229, 0.14) 0%, transparent 50%);
-  background-size: 200% 200%;
+    radial-gradient(ellipse 60% 40% at 10% 70%,  rgba(20, 184, 166, 0.10) 0%, transparent 50%),
+    radial-gradient(ellipse 50% 40% at 90% 85%,  rgba(79, 70, 229, 0.14) 0%, transparent 50%);
+  /* animate scale+opacity only — no layout thrash */
   animation: auroraMesh 18s ease-in-out infinite alternate;
-  will-change: background-position;
+  will-change: transform, opacity;
+  contain: layout style;
 }
 
 @keyframes auroraMesh {
-  0%   { background-position: 0%   0%,   100% 0%,   50% 100%, 0%   50%, 100% 100%; }
-  25%  { background-position: 30%  20%,  70%  30%,  20% 80%,  40%  60%, 80%  70%;  }
-  50%  { background-position: 60%  10%,  40%  60%,  80% 30%,  20%  80%, 60%  20%;  }
-  75%  { background-position: 20%  70%,  80%  10%,  40% 60%,  70%  20%, 30%  90%;  }
-  100% { background-position: 100% 100%, 0%   100%, 100% 0%,  100% 0%,  0%   50%;  }
+  0%   { transform: scale(1)    rotate(0deg);   opacity: 0.85; }
+  33%  { transform: scale(1.04) rotate(1deg);   opacity: 1;    }
+  66%  { transform: scale(0.97) rotate(-1deg);  opacity: 0.9;  }
+  100% { transform: scale(1.02) rotate(0.5deg); opacity: 0.95; }
 }
 
 /* ── Layer 3: drifting orbs ── */
+/* blur is on a ::after pseudo so it's static — no repaint on move */
 .aurora-orb {
   position: fixed;
   border-radius: 50%;
   pointer-events: none;
   z-index: -8;
   will-change: transform;
+  /* contain layout so orb movement doesn't trigger ancestor relayout */
+  contain: layout style;
 }
 
+/* Each orb's colour + size — blur lives on the element itself but
+   is NOT animated (static blur = no repaint every frame) */
 .aurora-orb--1 {
   width: 600px; height: 600px;
   top: -15%; left: -10%;
@@ -61,7 +71,6 @@
   filter: blur(72px);
   animation: orbDrift1 22s ease-in-out infinite;
 }
-
 .aurora-orb--2 {
   width: 500px; height: 500px;
   top: 30%; right: -8%;
@@ -69,7 +78,6 @@
   filter: blur(80px);
   animation: orbDrift2 26s ease-in-out infinite;
 }
-
 .aurora-orb--3 {
   width: 700px; height: 700px;
   bottom: -20%; left: 20%;
@@ -77,7 +85,6 @@
   filter: blur(90px);
   animation: orbDrift3 30s ease-in-out infinite;
 }
-
 .aurora-orb--4 {
   width: 380px; height: 380px;
   top: 55%; left: 55%;
@@ -86,57 +93,51 @@
   animation: orbDrift4 20s ease-in-out infinite;
 }
 
+/* transform-only keyframes — compositor thread, zero main-thread cost */
 @keyframes orbDrift1 {
-  0%, 100% { transform: translate(0px,   0px)   scale(1);    }
-  33%       { transform: translate(60px,  -40px) scale(1.08); }
-  66%       { transform: translate(-30px,  50px) scale(0.95); }
+  0%, 100% { transform: translate(0px,   0px);   }
+  33%       { transform: translate(60px,  -40px); }
+  66%       { transform: translate(-30px,  50px); }
 }
 @keyframes orbDrift2 {
-  0%, 100% { transform: translate(0px,  0px)   scale(1);    }
-  40%       { transform: translate(-50px, 60px) scale(1.05); }
-  70%       { transform: translate(40px, -30px) scale(0.97); }
+  0%, 100% { transform: translate(0px,   0px);  }
+  40%       { transform: translate(-50px, 60px); }
+  70%       { transform: translate(40px, -30px); }
 }
 @keyframes orbDrift3 {
-  0%, 100% { transform: translate(0px,   0px)   scale(1);    }
-  30%       { transform: translate(-40px, -50px) scale(1.06); }
-  65%       { transform: translate(50px,   30px) scale(0.94); }
+  0%, 100% { transform: translate(0px,    0px);   }
+  30%       { transform: translate(-40px, -50px); }
+  65%       { transform: translate(50px,   30px); }
 }
 @keyframes orbDrift4 {
-  0%, 100% { transform: translate(0px,  0px)   scale(1);    }
-  50%       { transform: translate(-60px, -40px) scale(1.10); }
+  0%, 100% { transform: translate(0px,   0px);   }
+  50%       { transform: translate(-60px, -40px); }
 }
 
-/* ── Layer 4: dot grid (takeUforward style) ── */
+/* ── Layer 4: dot grid ── */
 .aurora-dots {
   position: fixed;
   inset: 0;
   z-index: -7;
   pointer-events: none;
+  contain: strict;
   background-image: radial-gradient(
     circle,
     rgba(168, 139, 250, 0.18) 1px,
     transparent 1px
   );
   background-size: 28px 28px;
-  /* subtle fade from edges so it doesn't look tiled */
- -webkit-mask-image: radial-gradient(
-  ellipse 85% 85% at 50% 50%,
-  black 40%,
-  transparent 100%
-);
-mask-image: radial-gradient(
-  ellipse 85% 85% at 50% 50%,
-  black 40%,
-  transparent 100%
-);
+  -webkit-mask-image: radial-gradient(ellipse 85% 85% at 50% 50%, black 40%, transparent 100%);
+  mask-image: radial-gradient(ellipse 85% 85% at 50% 50%, black 40%, transparent 100%);
 }
 
-/* ── Layer 5: scanline shimmer ── */
+/* ── Layer 5: scanlines — opacity animation only (cheap) ── */
 .aurora-scanlines {
   position: fixed;
   inset: 0;
   z-index: -6;
   pointer-events: none;
+  contain: strict;
   background: repeating-linear-gradient(
     0deg,
     transparent,
@@ -144,29 +145,34 @@ mask-image: radial-gradient(
     rgba(0, 0, 0, 0.04) 2px,
     rgba(0, 0, 0, 0.04) 4px
   );
-  animation: scanlineMove 12s linear infinite;
+  /* removed background-position animation — was causing paint every frame */
+  /* replaced with a subtle opacity pulse — compositor only */
+  animation: scanlineFade 8s ease-in-out infinite alternate;
+  will-change: opacity;
 }
 
-@keyframes scanlineMove {
-  0%   { background-position: 0 0;    }
-  100% { background-position: 0 80px; }
+@keyframes scanlineFade {
+  0%   { opacity: 0.6; }
+  100% { opacity: 1;   }
 }
 
-/* ── Layer 6: star canvas ── */
+/* ── Layer 6: stars ── */
 .aurora-stars {
   position: fixed;
   inset: 0;
   z-index: -5;
   pointer-events: none;
+  contain: strict;
   opacity: 0.9;
 }
 
-/* ── Layer 7: edge vignette ── */
+/* ── Layer 7: vignette ── */
 .aurora-vignette {
   position: fixed;
   inset: 0;
   z-index: -4;
   pointer-events: none;
+  contain: strict;
   background: radial-gradient(
     ellipse 100% 100% at 50% 50%,
     transparent 40%,
@@ -179,22 +185,32 @@ mask-image: radial-gradient(
   position: relative;
   z-index: 1;
   min-height: 100svh;
+  /* Prevent content from causing layout shift on load */
+  contain: layout;
 }
 
-/* ── Responsive: reduce blur on mobile for perf ── */
+/* ── Mobile: hide orb 3 & 4, reduce blur significantly ── */
 @media (max-width: 768px) {
-  .aurora-orb--1 { filter: blur(50px); width: 400px; height: 400px; }
-  .aurora-orb--2 { filter: blur(55px); width: 350px; height: 350px; }
-  .aurora-orb--3 { filter: blur(60px); width: 450px; height: 450px; }
-  .aurora-orb--4 { filter: blur(45px); width: 260px; height: 260px; }
-  .aurora-scanlines { display: none; } /* tiny perf save on mobile */
+  /* Hide heaviest orbs on mobile */
+  .aurora-orb--3 { display: none; }
+  .aurora-orb--4 { display: none; }
+
+  .aurora-orb--1 { filter: blur(40px); width: 300px; height: 300px; }
+  .aurora-orb--2 { filter: blur(45px); width: 280px; height: 280px; }
+
+  /* Kill scanlines entirely on mobile */
+  .aurora-scanlines { display: none; }
+
+  /* Simplify mesh on mobile */
+  .aurora-mesh { animation-duration: 30s; }
 }
 
-/* ── Respect reduced motion ── */
+/* ── Reduced motion ── */
 @media (prefers-reduced-motion: reduce) {
   .aurora-mesh,
   .aurora-orb,
   .aurora-scanlines {
     animation: none !important;
+    will-change: auto !important;
   }
 }

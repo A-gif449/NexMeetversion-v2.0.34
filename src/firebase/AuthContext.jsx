@@ -1,60 +1,62 @@
 // src/firebase/AuthContext.jsx
-// Extended: reads user plan ('free' | 'pro') from Firestore users/{uid}
-// Falls back to 'free' if no document exists yet.
+// Provides global auth state via React Context.
+// Exposes: currentUser, loading, and all auth action helpers.
 
 import { createContext, useContext, useEffect, useState } from 'react'
-import { onAuth, logOut, db } from './config'
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore'
+import {
+  signInGoogle,
+  signInEmail,
+  signUpEmail,
+  resetPassword,
+  logOut,
+  onAuth,
+} from './config'
 
+// ── Context ───────────────────────────────────────────────────────────────────
 const AuthContext = createContext(null)
 
+// ── Hook ──────────────────────────────────────────────────────────────────────
+export function useAuth() {
+  const ctx = useContext(AuthContext)
+  if (!ctx) throw new Error('useAuth must be used inside <AuthProvider>')
+  return ctx
+}
+
+// ── Provider ──────────────────────────────────────────────────────────────────
 export function AuthProvider({ children }) {
-  const [user,    setUser]    = useState(undefined)   // undefined = loading
-  const [plan,    setPlan]    = useState('free')       // 'free' | 'pro'
-  const [loading, setLoading] = useState(true)
+  const [currentUser, setCurrentUser] = useState(null)
+  const [loading, setLoading]         = useState(true)
 
+  // Listen for Firebase auth state changes (login, logout, token refresh)
   useEffect(() => {
-    const unsub = onAuth(async (u) => {
-      setUser(u)
-
-      if (u) {
-        try {
-          const ref  = doc(db, 'users', u.uid)
-          const snap = await getDoc(ref)
-
-          if (snap.exists()) {
-            // User doc already exists — read plan
-            setPlan(snap.data().plan || 'free')
-          } else {
-            // First sign-in — create user doc with free plan
-            await setDoc(ref, {
-              uid:         u.uid,
-              email:       u.email,
-              displayName: u.displayName,
-              photoURL:    u.photoURL,
-              plan:        'free',
-              createdAt:   serverTimestamp(),
-            })
-            setPlan('free')
-          }
-        } catch (err) {
-          console.error('[NexMeet] Could not load user plan:', err)
-          setPlan('free')   // safe default on error
-        }
-      } else {
-        setPlan('free')
-      }
-
+    const unsubscribe = onAuth((user) => {
+      setCurrentUser(user)
       setLoading(false)
     })
-    return unsub
+    return unsubscribe   // clean up listener on unmount
   }, [])
 
+  const value = {
+    // ── State ──────────────────────────────
+    currentUser,
+    user: currentUser,   // alias — Login.jsx, Room.jsx and all other files use { user }
+    loading,
+
+    // ── Actions ────────────────────────────
+    signInGoogle,                          // Google OAuth popup
+    signInEmail,                           // email + password sign-in
+    signUpEmail,                           // email + password register (sets displayName)
+    resetPassword,                         // send password-reset email
+    logOut,                                // sign out
+  }
+
+  // Don't render children until Firebase has resolved the initial auth state.
+  // This prevents a flash of the login page for already-logged-in users.
+  if (loading) return null
+
   return (
-    <AuthContext.Provider value={{ user, plan, loading, logOut }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   )
 }
-
-export const useAuth = () => useContext(AuthContext)

@@ -1,8 +1,11 @@
 // src/components/WaitingRoom.jsx
-// OPTIMIZED: No inline style object recreation, CSS classes for animations,
-// single interval for both dots + timer, hover via CSS, stable keyframes.
+// OPTIMIZED v2:
+// - Removed unused tickRef (tick state alone drives the interval)
+// - Removed two remaining inline style={{}} objects (moved to CSS)
+// - Replaced useMemo on cheap primitives with direct expressions
+// - No logic or visual changes
 
-import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import { useEffect, useState, useCallback } from "react";
 
 // ─── Keyframes + CSS injected ONCE at module level, not on every render ───
 const STYLES = `
@@ -161,6 +164,13 @@ const STYLES = `
     padding: 12px 16px;
     margin-top: 4px;
   }
+  .wr-tip-icon {
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+  .wr-room-icon {
+    font-size: 14px;
+  }
   .wr-tip-text { color: #52525b; font-size: 13px; line-height: 1.5; }
   .wr-leave-btn {
     margin-top: 8px;
@@ -219,24 +229,20 @@ export default function WaitingRoom({ roomId, user, isHost, onAdmitted, onDenied
 
 // ─── WaitingUI ────────────────────────────────────────────────────────────────
 function WaitingUI({ roomId, user, onDenied }) {
-  const [tick, setTick]       = useState(0);   // drives both dots + timer
+  // Single tick counter drives both the dots animation and the wait timer.
+  // tickRef removed — tick state is the single source of truth.
+  const [tick, setTick] = useState(0);
   const [imgError, setImgError] = useState(false);
 
-  // Single interval drives both the dots animation and the wait timer
-  // Avoids having two setInterval calls running simultaneously
-  const tickRef = useRef(0);
   useEffect(() => {
-    const id = setInterval(() => {
-      tickRef.current += 1;
-      setTick(tickRef.current);
-    }, 500);
+    const id = setInterval(() => setTick((t) => t + 1), 500);
     return () => clearInterval(id);
   }, []);
 
-  // Derive dots and time from a single tick counter — no extra state
-  const dots        = useMemo(() => ".".repeat(tick % 4),          [tick]);
-  const timeWaiting = useMemo(() => Math.floor(tick / 2),          [tick]); // every 2 ticks = 1s
-  const timeLabel   = useMemo(() => formatTime(timeWaiting),       [timeWaiting]);
+  // Derive dots and time directly — cheap string/math ops don't need useMemo
+  const dots        = ".".repeat(tick % 4);
+  const timeWaiting = Math.floor(tick / 2); // every 2 ticks = 1 real second
+  const timeLabel   = formatTime(timeWaiting);
 
   // Stable callback — won't cause img remount on re-renders
   const handleImgError = useCallback(() => setImgError(true), []);
@@ -280,7 +286,8 @@ function WaitingUI({ roomId, user, onDenied }) {
 
         {/* Room badge */}
         <div className="wr-room-badge">
-          <span style={{ fontSize: 14 }}>🔗</span>
+          {/* Moved to CSS class — no more inline style object */}
+          <span className="wr-room-icon">🔗</span>
           <span className="wr-room-id">Room: {roomId}</span>
         </div>
 
@@ -292,7 +299,8 @@ function WaitingUI({ roomId, user, onDenied }) {
 
         {/* Tip */}
         <div className="wr-tip-box">
-          <span style={{ fontSize: 14, flexShrink: 0 }}>💡</span>
+          {/* Moved to CSS class — no more inline style object */}
+          <span className="wr-tip-icon">💡</span>
           <span className="wr-tip-text">
             Make sure your camera and mic are ready before you join.
           </span>

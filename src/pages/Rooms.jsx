@@ -7,8 +7,8 @@ import Navbar from '../components/Navbar'
 import { MeetingPersistence } from '../utils/meetingPersistence'
 import Footer from '../components/Footer'
 
-import { doc, setDoc } from 'firebase/firestore'
-import { db } from '../firebase/config'
+// import { doc, setDoc } from 'firebase/firestore'
+// import { db } from '../firebase/config'
 
 const adjectives = ['brave','swift','cosmic','nova','solar','lunar','bright','deep','vivid','prime','sharp','clean']
 const nouns      = ['orbit','nexus','pulse','wave','node','core','beam','grid','spark','link','hub','loop']
@@ -196,7 +196,7 @@ function ParallaxBackground() {
         ctx.stroke()
       }
 
-      // ── Layer 6: corner accent glows ───────────────────────
+// ── Layer 6: corner accent glows ───────────────────────
       drawCornerGlow(ctx, 0,   0,   mx, my, 'rgba(124,58,237,0.12)')
       drawCornerGlow(ctx, W,   H,   mx, my, 'rgba(59,130,246,0.08)')
       drawCornerGlow(ctx, W,   0,   mx, my, 'rgba(20,184,166,0.06)')
@@ -206,9 +206,21 @@ function ParallaxBackground() {
     }
 
     rafRef.current = requestAnimationFrame(draw)
+
+    // ── Pause animation when tab is hidden (saves GPU + CPU) ──
+    const onVis = () => {
+      if (document.hidden) {
+        cancelAnimationFrame(rafRef.current)
+      } else {
+        rafRef.current = requestAnimationFrame(draw)
+      }
+    }
+    document.addEventListener('visibilitychange', onVis)
+
     return () => {
       cancelAnimationFrame(rafRef.current)
       window.removeEventListener('resize', resize)
+      document.removeEventListener('visibilitychange', onVis)
     }
   }, [])
 
@@ -336,6 +348,8 @@ export default function Rooms() {
   }, [])
 
   const handleCreate = async () => {
+    const { db } = await import('../firebase/config')
+    const { doc, setDoc } = await import('firebase/firestore')
     if (!roomId.trim()) { setError('Room ID cannot be empty.'); return }
     setError('')
     try {

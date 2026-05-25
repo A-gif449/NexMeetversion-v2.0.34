@@ -1,8 +1,8 @@
 // src/utils/useWaitingRoom.js
-// OPTIMIZED:
-// - All console.log removed (production noise + minor perf cost)
-// - setTimeout handles tracked via useRef to prevent leaks on unmount
-// - No logic changes — all behaviour identical
+// OPTIMIZED v2:
+// - safeTimeout wrapped in useRef so its identity is stable across renders,
+//   preventing the guest status useEffect from re-subscribing on every render
+// - No logic or behaviour changes
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { db } from '../firebase/config'
@@ -15,16 +15,20 @@ export default function useWaitingRoom(roomId, currentUser, isHost) {
   const [waitingStatus, setWaitingStatus] = useState('idle')
   const [waitingUsers,  setWaitingUsers]  = useState([])
 
-  const hasRequestedRef  = useRef(false)
-  // Track all pending setTimeout IDs so we can clear them on unmount
-  const timeoutRefs      = useRef([])
+  const hasRequestedRef = useRef(false)
+  const timeoutRefs     = useRef([])
 
-  // Helper: schedule a clearable timeout
-  const safeTimeout = useCallback((fn, ms) => {
+  // safeTimeout stored in a ref so its reference never changes between renders.
+  // Previously it was created with useCallback but listed as a dep in useEffect,
+  // which could trigger re-subscription if React ever re-created the callback.
+  const safeTimeoutRef = useRef((fn, ms) => {
     const id = setTimeout(fn, ms)
     timeoutRefs.current.push(id)
     return id
-  }, [])
+  })
+
+  // Convenience alias — same stable reference every time
+  const safeTimeout = safeTimeoutRef.current
 
   // Clear all pending timeouts on unmount
   useEffect(() => {
@@ -74,6 +78,8 @@ export default function useWaitingRoom(roomId, currentUser, isHost) {
   }, [roomId, currentUser, isHost])
 
   // ── GUEST: Listen for host decision ────────────────────────────────────
+  // safeTimeout is now a stable ref value — not listed in deps — so this
+  // effect never re-subscribes unless roomId, currentUser, or isHost changes.
   useEffect(() => {
     if (isHost !== false) return
     if (!currentUser || !roomId) return
@@ -102,7 +108,7 @@ export default function useWaitingRoom(roomId, currentUser, isHost) {
     })
 
     return () => unsub()
-  }, [roomId, currentUser, isHost, safeTimeout])
+  }, [roomId, currentUser, isHost]) // safeTimeout intentionally omitted — it's a stable ref value
 
   // ── HOST: Listen to waiting queue ──────────────────────────────────────
   useEffect(() => {
@@ -146,7 +152,7 @@ export default function useWaitingRoom(roomId, currentUser, isHost) {
     } catch (err) {
       console.error('[NexMeet] denyUser failed:', err)
     }
-  }, [roomId, safeTimeout])
+  }, [roomId]) // safeTimeout intentionally omitted — stable ref value
 
   // Host is always admitted
   const resolvedStatus = isHost === true ? 'admitted' : waitingStatus

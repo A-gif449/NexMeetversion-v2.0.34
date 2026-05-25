@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /room/
+Disallow: /rooms/
+
+Sitemap: https://nexmeet.app/sitemap.xml

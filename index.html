@@ -3,8 +3,45 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="NexMeet — HD video conferencing with E2E encryption, AI transcription, and seamless collaboration. Meet without limits." />
+
     <title>NexMeet — Meet without limits</title>
+
+    <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='50' fill='%237c5cfc'/></svg>" />
+
+    <!-- Preconnect to Google Fonts (eliminates render-blocking DNS lookup) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
+    <!-- Load fonts non-blocking with display=swap (prevents CLS from font swap) -->
+    <link
+      href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- Reserve layout space before JS loads — prevents CLS from root being empty -->
+    <style>
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+      html, body { height: 100%; }
+      body {
+        background: #05050f;
+        color: #e4e4f7;
+        font-family: 'DM Sans', sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      #root {
+        min-height: 100vh;
+        isolation: isolate;
+      }
+      /* Prevent flash of unstyled content */
+      #root:empty::before {
+        content: '';
+        display: block;
+        min-height: 100vh;
+        background: #05050f;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>

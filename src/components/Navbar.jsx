@@ -57,10 +57,14 @@ export default function Navbar() {
               <>
                 <NavLink to="/rooms"   active={isActive('/rooms')}>Rooms</NavLink>
                 <NavLink to="/pricing" active={isActive('/pricing')}>Pricing</NavLink>
+                <NavLink to="/support" active={isActive('/support')}>Support</NavLink>
               </>
             )}
             {!user && (
-              <NavLink to="/pricing" active={isActive('/pricing')}>Pricing</NavLink>
+              <>
+                <NavLink to="/pricing" active={isActive('/pricing')}>Pricing</NavLink>
+                <NavLink to="/support" active={isActive('/support')}>Support</NavLink>
+              </>
             )}
           </div>
 
@@ -185,6 +189,7 @@ export default function Navbar() {
 
               <MobileNavLink to="/rooms"   onClick={() => setMenuOpen(false)} active={isActive('/rooms')}>🏠 Rooms</MobileNavLink>
               <MobileNavLink to="/pricing" onClick={() => setMenuOpen(false)} active={isActive('/pricing')}>💎 Pricing</MobileNavLink>
+              <MobileNavLink to="/support" onClick={() => setMenuOpen(false)} active={isActive('/support')}>🛟 Support</MobileNavLink>
               <button
                 onClick={handleLogout}
                 style={{
@@ -201,6 +206,7 @@ export default function Navbar() {
           {!user && (
             <>
               <MobileNavLink to="/pricing" onClick={() => setMenuOpen(false)} active={isActive('/pricing')}>💎 Pricing</MobileNavLink>
+              <MobileNavLink to="/support" onClick={() => setMenuOpen(false)} active={isActive('/support')}>🛟 Support</MobileNavLink>
               <Link to="/login" onClick={() => setMenuOpen(false)} className="btn btn-outline btn-md" style={{ width: '100%' }}>Sign in</Link>
               <Link to="/login?tab=signup" onClick={() => setMenuOpen(false)} className="btn btn-primary btn-md" style={{ width: '100%' }}>Get started</Link>
             </>
