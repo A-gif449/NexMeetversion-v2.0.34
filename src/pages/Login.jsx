@@ -87,9 +87,61 @@ export default function Login() {
 
   return (
     <div style={{
-      minHeight: '100vh', display: 'flex',
-      background: 'var(--bg-void)', overflow: 'hidden', position: 'relative',
+      minHeight: '100vh',
+      display: 'flex',
+      background: 'var(--bg-void)',
+      overflow: 'hidden',
+      position: 'relative',
     }}>
+      {/* ── Responsive styles ── */}
+      <style>{`
+        .login-left {
+          width: 45%;
+          position: relative;
+          z-index: 1;
+          display: flex;
+          flex-direction: column;
+          justify-content: flex-end;
+          padding: 3rem;
+          overflow: hidden;
+          flex-shrink: 0;
+        }
+        .login-right {
+          width: 55%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 2rem;
+          position: relative;
+          z-index: 1;
+          flex-shrink: 0;
+        }
+        .login-right-inner {
+          width: 100%;
+          max-width: 380px;
+        }
+
+        /* ── Mobile ── */
+        @media (max-width: 768px) {
+          .login-left {
+            display: none !important;
+          }
+          .login-right {
+            width: 100% !important;
+            min-width: 0 !important;
+            padding: 0 !important;
+            align-items: flex-start;
+            justify-content: center;
+          }
+          .login-right-inner {
+            width: 100%;
+            max-width: 100%;
+            padding: 2.5rem 1.25rem 2rem;
+            box-sizing: border-box;
+          }
+        }
+      `}</style>
+
       {/* Background grid */}
       <div className="grid-bg" />
 
@@ -99,11 +151,7 @@ export default function Login() {
       <div className="orb orb-teal"   style={{ width: 200, height: 200, top: '40%', left: '40%' }} />
 
       {/* Left panel */}
-      <div style={{
-        width: '45%', position: 'relative', zIndex: 1,
-        display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
-        padding: '3rem', overflow: 'hidden',
-      }}>
+      <div className="login-left">
         {/* Subtle inner gradient */}
         <div style={{
           position: 'absolute', inset: 0,
@@ -184,11 +232,8 @@ export default function Login() {
       </div>
 
       {/* Right panel — form */}
-      <div style={{
-        width: '55%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: '2rem', position: 'relative', zIndex: 1,
-      }}>
-        <div style={{ width: '100%', maxWidth: 380 }}>
+      <div className="login-right">
+        <div className="login-right-inner">
 
           {view === 'forgot' ? (
             /* ── Forgot password ── */

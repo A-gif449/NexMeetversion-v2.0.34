@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://nexmeet-8c0fc.web.app/</loc>
+    <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>https://nexmeet-8c0fc.web.app/login</loc>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://nexmeet-8c0fc.web.app/pricing</loc>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://nexmeet-8c0fc.web.app/support</loc>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://nexmeet-8c0fc.web.app/rooms</loc>
+    <priority>0.7</priority>
+  </url>
+</urlset>

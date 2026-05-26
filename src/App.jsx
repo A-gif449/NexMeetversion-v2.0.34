@@ -6,6 +6,8 @@ import { AuthProvider } from './firebase/AuthContext'
 import ProtectedRoute from './components/ProtectedRoute'
 import LoadingScreen  from './components/LoadingScreen'
 import AuroraBackground from './components/AuroraBackground'
+import NotificationPrompt from './components/NotificationPrompt'  // ← ADD THIS
+import { app } from './firebase/config'                            // ← ADD THIS
 import './styles/main.css'
 
 // ── Lazy load all pages ──
@@ -25,12 +27,9 @@ const PageLoader = () => (
   </div>
 )
 
-// ── Skip loading screen for returning users ──
-// First visit: show it. Every visit after: skip straight to app.
 const hasVisitedBefore = localStorage.getItem('nxl-visited')
 
 export default function App() {
-  // If they've visited before, skip loading screen entirely
   const [loading, setLoading] = useState(!hasVisitedBefore)
 
   const handleComplete = () => {
@@ -46,6 +45,7 @@ export default function App() {
     <AuthProvider>
       <AuroraBackground>
         <AnnouncementBanner type="update" />
+        <NotificationPrompt firebaseApp={app} />  {/* ← ADD THIS */}
         <BrowserRouter>
           <Suspense fallback={<PageLoader />}>
             <Routes>

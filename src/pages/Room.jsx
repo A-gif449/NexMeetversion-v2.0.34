@@ -1,9 +1,12 @@
-// src/pages/Room.jsx  — HOLOGRAPHIC EDITION + MOBILE FIX
+// src/pages/Room.jsx  — HOLOGRAPHIC EDITION + MOBILE FIX + NOTIFICATIONS (FIXED)
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../firebase/AuthContext'
 import { io } from 'socket.io-client'
 import { PeerConnectionManager } from '../utils/webrtc'
+import NotificationService from '../components/NotificationService'
+import NotificationPrompt from '../components/NotificationPrompt'
+import { app } from '../firebase/config'
 
 import {
   Mic, MicOff, Video, VideoOff, Monitor, MonitorUp,
@@ -22,10 +25,7 @@ import WaitingRoom    from '../components/WaitingRoom'
 import AdmitPanel     from '../components/AdmitPanel'
 import MeetingFeedback from '../components/MeetingFeedback'
 
-// import { db } from '../firebase/config'
-// import { doc, getDoc } from 'firebase/firestore'
-
-/* ─── Floating emoji reactions (unchanged logic) ──────────────── */
+/* ─── Floating emoji reactions ────────────────────────────────── */
 function FloatingReaction({ emoji, name, onDone }) {
   useEffect(() => { const t = setTimeout(onDone, 2500); return () => clearTimeout(t) }, [])
   const left = `${20 + Math.random() * 60}%`
@@ -117,7 +117,7 @@ export default function Room() {
   const { user }   = useAuth()
   const navigate   = useNavigate()
 
-  // ── All original state (untouched) ──────────────────────────
+  // ── All original state ───────────────────────────────────────
   const [micOn,        setMicOn]        = useState(true)
   const [camOn,        setCamOn]        = useState(true)
   const [screenOn,     setScreenOn]     = useState(false)
@@ -140,7 +140,7 @@ export default function Room() {
   const [peerHealth,    setPeerHealth]    = useState({})
   const [overallHealth, setOverallHealth] = useState('good')
 
-  // ── MOBILE: track which drawer is open (only one at a time on mobile) ──
+  // ── MOBILE: track which drawer is open ──────────────────────
   const [mobileDrawer, setMobileDrawer] = useState(null) // 'chat' | 'people' | null
 
   const videoRef       = useRef(null)
@@ -152,6 +152,25 @@ export default function Room() {
   const chatEndRef     = useRef(null)
   const joinedAtRef    = useRef(Date.now())
   const setupDoneRef   = useRef(false)
+
+  // ── Refs to track panel/drawer state inside socket callbacks ─
+  // Using refs here avoids stale closure bugs in socket event handlers.
+  // We keep these in sync with state via useEffect below.
+  const chatOpenRef    = useRef(false)
+  const mobileDrawerRef = useRef(null)
+
+  useEffect(() => { chatOpenRef.current = chatOpen },       [chatOpen])
+  useEffect(() => { mobileDrawerRef.current = mobileDrawer }, [mobileDrawer])
+
+  // ── FIX #1: Initialize NotificationService ONCE, here only ──
+  // NotificationPrompt also uses useNotification internally but
+  // that hook guards against double-init via NotificationService.initialized.
+  // We do NOT call useNotification here — Room.jsx only needs the
+  // service-level calls (notifyUserJoined, notifyUserLeft, notifyNewMessage).
+  useEffect(() => {
+    if (NotificationService.initialized) return   // guard: skip if already done
+    NotificationService.init(app).catch(() => {})
+  }, [])
 
   const { rejoinData, confirmRejoin, clearRejoin, updateMediaState, endSession } =
     useMeetingPersistence(roomId, user)
@@ -167,7 +186,7 @@ export default function Room() {
   const { waitingStatus, waitingUsers, requestToJoin, admitUser, denyUser } =
     useWaitingRoom(roomId, user, isHost)
 
-  // ── All original effects + logic (100% untouched) ───────────
+  // ── Room host/private resolution ─────────────────────────────
   useEffect(() => {
     if (!roomId || !user) return
     let cancelled = false
@@ -228,7 +247,7 @@ export default function Room() {
     enableAuto(); pcmRef.current?.enableAutoQualityForAll()
   }, [enableAuto])
 
-  // ── WebRTC setup (untouched) ─────────────────────────────────
+  // ── WebRTC setup ─────────────────────────────────────────────
   useEffect(() => {
     if (setupDoneRef.current)   return
     if (isHost === null)        return
@@ -292,11 +311,18 @@ export default function Room() {
           if (PeerConnectionManager.shouldMakeOffer(socket.id, socketId)) pcm.callPeer(socketId)
         })
       })
+
+      // ── FIX #2: peer-joined — only show in-room toast, no
+      //    NotificationService toast (avoids double toast).
+      //    NotificationService only plays the JOIN sound here.
       socket.on('peer-joined', ({ socketId, displayName }) => {
         setPeers(prev => ({ ...prev, [socketId]: { displayName } }))
         showToast(`${displayName} joined`)
+        // Play sound only — no DOM toast from NotificationService
+        NotificationService.playSound('join')
         if (PeerConnectionManager.shouldMakeOffer(socket.id, socketId)) pcm.callPeer(socketId)
       })
+
       socket.on('offer',         ({ from, offer, displayName }) => {
         setPeers(prev => ({ ...prev, [from]: { ...prev[from], displayName } }))
         pcm.handleOffer(from, offer)
@@ -316,19 +342,34 @@ export default function Room() {
         try { await addE2EPeer(from, key); await pcm.addE2EPeer(from, key); showToast('E2E encryption active') } catch {}
       })
 
+      // ── FIX #3: peer-left — same pattern, sound only ──────────
       socket.on('peer-left', ({ socketId }) => {
         setPeers(prev => {
           const name = prev[socketId]?.displayName || 'Someone'
           showToast(`${name} left`)
+          // Play sound only — in-room toast already handles the message
+          NotificationService.playSound('leave')
           const p = { ...prev }; delete p[socketId]; return p
         })
         setPeerHealth(prev => { const p = { ...prev }; delete p[socketId]; return p })
         pcm.removePeer(socketId)
       })
-      socket.on('chat-message',     ({ displayName, message, timestamp }) => setMessages(m => [...m, { from: displayName, text: message, ts: timestamp }]))
-      socket.on('peer-raise-hand',  ({ socketId, raised })                => setPeers(prev => ({ ...prev, [socketId]: { ...prev[socketId], handRaised: raised } })))
-      socket.on('peer-reaction',    ({ displayName, emoji })              => setReactions(r => [...r, { id: Date.now() + Math.random(), emoji, name: displayName }]))
-      socket.on('peer-media-state', ({ socketId, video, audio })          => setPeers(prev => ({ ...prev, [socketId]: { ...prev[socketId], camOn: video, micOn: audio } })))
+
+      // ── FIX #4: chat-message — use refs instead of nested
+      //    setState calls to safely read current panel state ──────
+      socket.on('chat-message', ({ displayName, message, timestamp }) => {
+        setMessages(m => [...m, { from: displayName, text: message, ts: timestamp }])
+        // Read current open-state from refs (always fresh, no stale closure)
+        const isChatVisible = chatOpenRef.current || mobileDrawerRef.current === 'chat'
+        if (!isChatVisible) {
+          // Play sound + show DOM toast only when chat panel is hidden
+          NotificationService.notifyNewMessage(displayName, message)
+        }
+      })
+
+      socket.on('peer-raise-hand',  ({ socketId, raised })       => setPeers(prev => ({ ...prev, [socketId]: { ...prev[socketId], handRaised: raised } })))
+      socket.on('peer-reaction',    ({ displayName, emoji })     => setReactions(r => [...r, { id: Date.now() + Math.random(), emoji, name: displayName }]))
+      socket.on('peer-media-state', ({ socketId, video, audio }) => setPeers(prev => ({ ...prev, [socketId]: { ...prev[socketId], camOn: video, micOn: audio } })))
     }
 
     setup()
@@ -344,7 +385,7 @@ export default function Room() {
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
 
-  // ── All original handlers (untouched) ───────────────────────
+  // ── All original handlers ────────────────────────────────────
   const toggleMic = () => {
     streamRef.current?.getAudioTracks().forEach(t => { t.enabled = !micOn })
     socketRef.current?.emit('media-state', { video: camOn, audio: !micOn })
@@ -428,7 +469,7 @@ export default function Room() {
   const handleFeedbackSubmit = (data) => { console.log('[NexMeet] Meeting feedback:', data) }
   const handleFeedbackClose  = () => { setShowFeedback(false); navigate('/rooms') }
 
-  // ── FIX 2: Advanced timer — hours support + color thresholds ──
+  // ── Timer helpers ────────────────────────────────────────────
   const fmt = (s) => {
     const h = Math.floor(s / 3600)
     const m = Math.floor((s % 3600) / 60)
@@ -447,7 +488,7 @@ export default function Room() {
     ...peerList.map(([, p]) => ({ name: p.displayName || 'Guest', isLocal: false, handRaised: p.handRaised }))
   ]
 
-  // ── mobile drawer toggle helpers ────────────────────────────
+  // ── Mobile drawer helpers ────────────────────────────────────
   const toggleMobileChat    = () => setMobileDrawer(d => d === 'chat'   ? null : 'chat')
   const toggleMobilePeople  = () => setMobileDrawer(d => d === 'people' ? null : 'people')
   const closeMobileDrawer   = () => setMobileDrawer(null)
@@ -469,7 +510,7 @@ export default function Room() {
     )
   }
 
-  // ── 2. Waiting room (unchanged) ──────────────────────────────
+  // ── 2. Waiting room ──────────────────────────────────────────
   if (isHost === false && isPrivateRoom === true && waitingStatus !== 'admitted') {
     return (
       <WaitingRoom roomId={roomId} user={user} isHost={false} onAdmitted={() => {}} onDenied={() => navigate('/rooms')} />
@@ -521,18 +562,10 @@ export default function Room() {
         }
         .chat-input:focus { border-color: rgba(124,58,237,0.6) !important; box-shadow: 0 0 0 2px rgba(124,58,237,0.1); }
 
-        /* ── MOBILE DRAWER (slides up from bottom) ── */
-        .mobile-drawer {
-          display: none;
-        }
+        .mobile-drawer { display: none; }
 
-        /* ── MOBILE OVERRIDES ── */
         @media (max-width: 768px) {
-
-          /* Hide desktop side panels — use mobile drawer instead */
           .holo-panel { display: none !important; }
-
-          /* Mobile drawer shown as bottom sheet */
           .mobile-drawer {
             display: flex;
             flex-direction: column;
@@ -546,8 +579,6 @@ export default function Room() {
             animation: slideUp 0.28s cubic-bezier(0.34,1.56,0.64,1);
             overflow: hidden;
           }
-
-          /* Control bar: two rows, wraps naturally */
           .nm-controls-bar {
             height: auto !important;
             min-height: 80px !important;
@@ -557,33 +588,13 @@ export default function Room() {
             justify-content: center !important;
             align-content: center !important;
           }
-
-          /* Make every button slightly smaller but still thumb-friendly */
-          .ctrl-btn {
-            width: 52px !important;
-            height: 58px !important;
-            border-radius: 12px !important;
-          }
-
-          /* Leave button — always visible, slightly larger */
-          .nm-leave-btn {
-            width: 58px !important;
-            height: 58px !important;
-            border-radius: 12px !important;
-          }
-
-          /* Dividers take no space on mobile */
+          .ctrl-btn { width: 52px !important; height: 58px !important; border-radius: 12px !important; }
+          .nm-leave-btn { width: 58px !important; height: 58px !important; border-radius: 12px !important; }
           .nm-holo-divider { display: none !important; }
-
-          /* Top bar: hide room-id and secondary chips, keep essentials */
           .nm-topbar-roomid  { display: none !important; }
           .nm-topbar-private { display: none !important; }
           .nm-topbar-copy    { display: none !important; }
-
-          /* Timer stays centered */
           .nm-topbar-timer { font-size: 0.72rem !important; }
-
-          /* Reaction picker goes above controls on mobile */
           .nm-reaction-picker {
             bottom: 116px !important;
             left: 8px !important;
@@ -591,41 +602,15 @@ export default function Room() {
             transform: none !important;
             justify-content: space-around !important;
           }
-
-          /* FIX 1: Video grid — force 2-column layout on mobile for 3+ participants */
-          .nm-video-grid {
-            padding: 0.5rem !important;
-          }
-          .nm-video-grid > div {
-            grid-template-columns: repeat(2, 1fr) !important;
-            max-width: 100% !important;
-            align-items: start !important;
-          }
-          .nm-video-grid > div[data-solo="true"] {
-            grid-template-columns: 1fr !important;
-          }
-
-          /* Holo-tile hover effect off on mobile (no mouse) */
-          .holo-tile:hover {
-            transform: none !important;
-            box-shadow: none !important;
-          }
+          .nm-video-grid { padding: 0.5rem !important; }
+          .nm-video-grid > div { grid-template-columns: repeat(2, 1fr) !important; max-width: 100% !important; align-items: start !important; }
+          .nm-video-grid > div[data-solo="true"] { grid-template-columns: 1fr !important; }
+          .holo-tile:hover { transform: none !important; box-shadow: none !important; }
         }
-
         @media (max-width: 480px) {
-          .ctrl-btn {
-            width: 46px !important;
-            height: 52px !important;
-            border-radius: 10px !important;
-          }
-          .nm-leave-btn {
-            width: 52px !important;
-            height: 52px !important;
-          }
-          .nm-controls-bar {
-            gap: 4px !important;
-            padding: 8px 4px 12px !important;
-          }
+          .ctrl-btn { width: 46px !important; height: 52px !important; border-radius: 10px !important; }
+          .nm-leave-btn { width: 52px !important; height: 52px !important; }
+          .nm-controls-bar { gap: 4px !important; padding: 8px 4px 12px !important; }
         }
       `}</style>
 
@@ -634,7 +619,13 @@ export default function Room() {
       <AmbientOrbs />
       <HoloScanlines />
 
-      {/* ── Overlaid UI components (logic unchanged) ───────── */}
+      {/* ── FIX #5: NotificationPrompt handles its own FCM init
+            via useNotification internally. We pass app so it can
+            init if NotificationService isn't ready yet. The guard
+            inside NotificationService.init() prevents double-init. */}
+      <NotificationPrompt firebaseApp={app} />
+
+      {/* ── Overlaid UI components ──────────────────────────── */}
       <RejoinBanner rejoinData={rejoinData} onRejoin={confirmRejoin} onDismiss={clearRejoin} />
       {isHost === true && <AdmitPanel waitingUsers={waitingUsers} onAdmit={admitUser} onDeny={denyUser} />}
 
@@ -766,7 +757,6 @@ export default function Room() {
               {allParticipants.length}
             </div>
 
-            {/* FIX 3: Professional private room icon — SVG lock with label */}
             {isPrivateRoom && (
               <span className="nm-topbar-private" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.62rem', color: '#a78bfa', background: 'rgba(124,58,237,0.08)', border: '0.5px solid rgba(124,58,237,0.25)', padding: '3px 9px 3px 7px', borderRadius: 100, flexShrink: 0, letterSpacing: '0.04em', fontWeight: 600 }}>
                 <svg width="9" height="10" viewBox="0 0 9 10" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -786,13 +776,13 @@ export default function Room() {
             )}
           </div>
 
-          {/* Center — FIX 2: Advanced timer with color transitions */}
+          {/* Center — timer */}
           <div className="nm-topbar-timer" style={{ display: 'flex', alignItems: 'center', gap: 6, background: timerBg, border: `0.5px solid ${timerBorder}`, borderRadius: 100, padding: '4px 12px', flexShrink: 0, transition: 'all 1s ease' }}>
             <span style={{ width: 5, height: 5, borderRadius: '50%', background: timerColor, display: 'inline-block', animation: 'nm-pulse-dot 2s infinite', boxShadow: `0 0 6px ${timerColor}`, transition: 'background 1s ease' }} />
             <span style={{ fontSize: '0.78rem', color: timerColor, fontFamily: 'monospace', letterSpacing: '0.1em', transition: 'color 1s ease' }}>{fmt(elapsed)}</span>
           </div>
 
-          {/* Right — copy link (hidden on mobile) */}
+          {/* Right — copy link */}
           <button
             className="nm-topbar-copy"
             onClick={() => { navigator.clipboard.writeText(window.location.href).catch(()=>{}); showToast('Room link copied!') }}
@@ -815,7 +805,6 @@ export default function Room() {
             <div style={{ position: 'absolute', bottom: 16, left: 16, width: 40, height: 40, borderBottom: '1px solid rgba(124,58,237,0.25)', borderLeft: '1px solid rgba(124,58,237,0.25)', borderRadius: '0 0 0 2px' }} />
             <div style={{ position: 'absolute', bottom: 16, right: 16, width: 40, height: 40, borderBottom: '1px solid rgba(124,58,237,0.25)', borderRight: '1px solid rgba(124,58,237,0.25)', borderRadius: '0 0 2px 0' }} />
 
-            {/* FIX 1: Smart grid columns — √n capped at 3, data-solo for single-user */}
             <div
               data-solo={peerList.length === 0 ? 'true' : undefined}
               style={{
@@ -842,7 +831,7 @@ export default function Room() {
             </div>
           </div>
 
-          {/* ── Desktop side panels (hidden on mobile, replaced by drawers) ── */}
+          {/* ── Desktop side panels ── */}
           {participOpen && (
             <div className="holo-panel" style={{ width: 272, display: 'flex', flexDirection: 'column', animation: 'tileEntrance 0.25s ease' }}>
               <div style={{ padding: '1rem 1.25rem', borderBottom: '0.5px solid rgba(124,58,237,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -943,10 +932,8 @@ export default function Room() {
           paddingBottom: 'max(0px, env(safe-area-inset-bottom))',
           overflowX: 'visible',
         }}>
-          {/* Subtle top glow line */}
           <div style={{ position: 'absolute', top: 0, left: '15%', right: '15%', height: 1, background: 'linear-gradient(90deg, transparent, rgba(124,58,237,0.4), transparent)', pointerEvents: 'none' }} />
 
-          {/* Reaction picker */}
           {showReactionPicker && (
             <div className="nm-reaction-picker" style={{
               position: 'absolute', bottom: 104, left: '50%', transform: 'translateX(-50%)',
@@ -965,25 +952,17 @@ export default function Room() {
             </div>
           )}
 
-          {/* ── Core media controls — always visible ── */}
           <ControlBtn active={micOn}    danger={!micOn}  onClick={toggleMic}    icon={micOn    ? <Mic size={19} />      : <MicOff size={19} />}    label={micOn    ? 'Mute'    : 'Unmute'}  delay={0}   />
           <ControlBtn active={camOn}    danger={!camOn}  onClick={toggleCam}    icon={camOn    ? <Video size={19} />    : <VideoOff size={19} />}   label={camOn    ? 'Camera'  : 'No cam'}  delay={0.04}/>
           <ControlBtn active={screenOn}                  onClick={toggleScreen} icon={screenOn ? <MonitorUp size={19}/> : <Monitor size={19} />}    label={screenOn ? 'Sharing' : 'Share'}   delay={0.08}/>
 
           <HoloDivider />
 
-          {/* ── Chat — desktop uses side panel, mobile uses drawer ── */}
           <ControlBtn
             active={chatOpen || mobileDrawer === 'chat'}
             onClick={() => {
-              // On mobile, open drawer; on desktop, open side panel
-              if (window.innerWidth <= 768) {
-                toggleMobileChat()
-                setParticipOpen(false)
-              } else {
-                setChatOpen(c => !c)
-                setParticipOpen(false)
-              }
+              if (window.innerWidth <= 768) { toggleMobileChat(); setParticipOpen(false) }
+              else { setChatOpen(c => !c); setParticipOpen(false) }
             }}
             icon={<MessageCircle size={19} fill={(chatOpen || mobileDrawer === 'chat') ? 'currentColor' : 'none'} />}
             label="Chat"
@@ -993,13 +972,8 @@ export default function Room() {
           <ControlBtn
             active={participOpen || mobileDrawer === 'people'}
             onClick={() => {
-              if (window.innerWidth <= 768) {
-                toggleMobilePeople()
-                setChatOpen(false)
-              } else {
-                setParticipOpen(p => !p)
-                setChatOpen(false)
-              }
+              if (window.innerWidth <= 768) { toggleMobilePeople(); setChatOpen(false) }
+              else { setParticipOpen(p => !p); setChatOpen(false) }
             }}
             icon={<Users size={19} />}
             label="People"
@@ -1016,7 +990,6 @@ export default function Room() {
 
           <HoloDivider />
 
-          {/* ── Leave — always visible, always prominent ── */}
           <LeaveBtn onClick={handleLeave} />
         </div>
       </div>
@@ -1024,7 +997,7 @@ export default function Room() {
   )
 }
 
-/* ─── Remote video tile wrapper (unchanged logic) ─────────── */
+/* ─── Remote video tile wrapper ───────────────────────────── */
 function RemoteVideoTile({ name, stream, handRaised, micOn, health, tileIndex }) {
   const ref = useRef(null)
   useEffect(() => { if (ref.current && stream) ref.current.srcObject = stream }, [stream])
@@ -1056,11 +1029,8 @@ function VideoTile({ name, isLocal, videoRef, stream, camOn, micOn, handRaised, 
     <div
       className="holo-tile"
       style={{
-        aspectRatio: '16/9',
-        borderRadius: 16,
-        background: '#060614',
-        overflow: 'hidden',
-        position: 'relative',
+        aspectRatio: '16/9', borderRadius: 16, background: '#060614',
+        overflow: 'hidden', position: 'relative',
         border: `1px solid ${borderColor}`,
         boxShadow: `0 8px 32px rgba(0,0,0,0.5), 0 0 0 1px rgba(124,58,237,0.05), inset 0 1px 0 rgba(255,255,255,0.03), 0 0 30px ${glowColor}`,
         transition: 'border-color 0.4s ease, box-shadow 0.4s ease',
